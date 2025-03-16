@@ -480,7 +480,7 @@ var readRequestErrorTests = []struct {
 
 	header Header
 }{
-	0: {"GET / HTTP/1.1\r\nheader:foo\r\n\r\n", "", Header{"Header": {"foo"}}},
+	0: {"GET / HTTP/1.1\r\nheader:foo\r\n\r\n", "", Header{"Header": {"foo"}, HeaderOrderKey: {"foo"}}},
 	1: {"GET / HTTP/1.1\r\nheader:foo\r\n", io.ErrUnexpectedEOF.Error(), nil},
 	2: {"", io.EOF.Error(), nil},
 	3: {
@@ -502,7 +502,7 @@ var readRequestErrorTests = []struct {
 	6: {
 		in:     "PUT / HTTP/1.1\r\nContent-Length: 6 \r\nContent-Length: 6\r\nContent-Length:6\r\n\r\nGopher\r\n",
 		err:    "",
-		header: Header{"Content-Length": {"6"}},
+		header: Header{"Content-Length": {"6"}, HeaderOrderKey: {"Content-Length", "Content-Length", "Content-Length"}},
 	},
 	7: {
 		in:  "PUT / HTTP/1.1\r\nContent-Length: 1\r\nContent-Length: 6 \r\n\r\n",
@@ -514,7 +514,7 @@ var readRequestErrorTests = []struct {
 	},
 	9: {
 		in:     "HEAD / HTTP/1.1\r\nContent-Length:0\r\nContent-Length: 0\r\n\r\n",
-		header: Header{"Content-Length": {"0"}},
+		header: Header{"Content-Length": {"0"}, HeaderOrderKey: {"Content-Length", "Content-Length"}},
 	},
 	10: {
 		in:  "HEAD / HTTP/1.1\r\nHost: foo\r\nHost: bar\r\n\r\n\r\n\r\n",
@@ -757,6 +757,7 @@ func (l logWrites) Write(p []byte) (n int, err error) {
 func TestRequestWriteBufferedWriter(t *testing.T) {
 	got := []string{}
 	req, _ := NewRequest("GET", "http://foo.com/", nil)
+	req.Header = Header{HeaderOrderKey: {"host", "user-agent"}}
 	req.Write(logWrites{t, &got})
 	want := []string{
 		"GET / HTTP/1.1\r\n",
@@ -765,7 +766,7 @@ func TestRequestWriteBufferedWriter(t *testing.T) {
 		"\r\n",
 	}
 	if !reflect.DeepEqual(got, want) {
-		t.Errorf("Writes = %q\n  Want = %q", got, want)
+		t.Errorf("Writes = %#v\n  Want = %#v", got, want)
 	}
 }
 
@@ -777,6 +778,8 @@ func TestRequestBadHostHeader(t *testing.T) {
 	}
 	req.Host = "foo.com\nnewline"
 	req.URL.Host = "foo.com\nnewline"
+	req.Header = Header{HeaderOrderKey: {"host", "user-agent"}}
+
 	req.Write(logWrites{t, &got})
 	want := []string{
 		"GET /after HTTP/1.1\r\n",
@@ -795,6 +798,7 @@ func TestRequestBadUserAgent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	req.Header = Header{HeaderOrderKey: {"host", "user-agent"}}
 	req.Header.Set("User-Agent", "evil\r\nX-Evil: evil")
 	req.Write(logWrites{t, &got})
 	want := []string{

@@ -61,6 +61,7 @@ var reqTests = []reqTest{
 				"Proxy-Connection": {"keep-alive"},
 				"Content-Length":   {"7"},
 				"User-Agent":       {"Fake"},
+				HeaderOrderKey:     {"Host", "User-Agent", "Accept", "Accept-Language", "Accept-Encoding", "Accept-Charset", "Keep-Alive", "Content-Length", "Proxy-Connection"},
 			},
 			Close:         false,
 			ContentLength: 7,
@@ -87,7 +88,7 @@ var reqTests = []reqTest{
 			Proto:         "HTTP/1.1",
 			ProtoMajor:    1,
 			ProtoMinor:    1,
-			Header:        Header{},
+			Header:        Header{HeaderOrderKey: {"Host"}},
 			Close:         false,
 			ContentLength: 0,
 			Host:          "foo.com",
@@ -113,7 +114,7 @@ var reqTests = []reqTest{
 			Proto:         "HTTP/1.1",
 			ProtoMajor:    1,
 			ProtoMinor:    1,
-			Header:        Header{},
+			Header:        Header{HeaderOrderKey: {"Host"}},
 			Close:         false,
 			ContentLength: 0,
 			Host:          "test",
@@ -164,7 +165,7 @@ var reqTests = []reqTest{
 			Proto:            "HTTP/1.1",
 			ProtoMajor:       1,
 			ProtoMinor:       1,
-			Header:           Header{},
+			Header:           Header{HeaderOrderKey: {"Host", "Transfer-Encoding"}},
 			ContentLength:    -1,
 			Host:             "foo.com",
 			RequestURI:       "/",
@@ -196,7 +197,7 @@ var reqTests = []reqTest{
 			Proto:            "HTTP/1.1",
 			ProtoMajor:       1,
 			ProtoMinor:       1,
-			Header:           Header{},
+			Header:           Header{HeaderOrderKey: {"Host", "Transfer-Encoding", "Content-Length"}},
 			ContentLength:    -1,
 			Host:             "foo.com",
 			RequestURI:       "/",
@@ -291,7 +292,8 @@ var reqTests = []reqTest{
 			ProtoMajor: 1,
 			ProtoMinor: 1,
 			Header: Header{
-				"Server": []string{"foo"},
+				"Server":       []string{"foo"},
+				HeaderOrderKey: {"Server"},
 			},
 			Close:         false,
 			ContentLength: 0,
@@ -315,7 +317,8 @@ var reqTests = []reqTest{
 			ProtoMajor: 1,
 			ProtoMinor: 1,
 			Header: Header{
-				"Server": []string{"foo"},
+				"Server":       []string{"foo"},
+				HeaderOrderKey: {"Server"},
 			},
 			Close:         false,
 			ContentLength: 0,
@@ -339,7 +342,8 @@ var reqTests = []reqTest{
 				// This wasn't removed from Go 1.0 to
 				// Go 1.3, so locking it in that we
 				// keep this:
-				"Connection": []string{"close"},
+				"Connection":   []string{"close"},
+				HeaderOrderKey: {"Host", "Connection"},
 			},
 			Host:       "issue8261.com",
 			Proto:      "HTTP/1.1",
@@ -366,6 +370,7 @@ var reqTests = []reqTest{
 			Header: Header{
 				"Connection":     []string{"close"},
 				"Content-Length": []string{"0"},
+				HeaderOrderKey:   {"Host", "Connection", "Content-Length"},
 			},
 			Host:       "issue8261.com",
 			Proto:      "HTTP/1.1",
@@ -415,6 +420,7 @@ func TestReadRequest(t *testing.T) {
 		rbody := req.Body
 		req.Body = nil
 		testName := fmt.Sprintf("Test %d (%q)", i, tt.Raw)
+		delete(req.Header, "Header-Order:") // irrelevant to test
 		diff(t, testName, req, tt.Req)
 		var bout strings.Builder
 		if rbody != nil {

@@ -57,6 +57,7 @@ func ExampleDumpRequestOut() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	req.Header = http.Header{http.HeaderOrderKey: []string{"host", "user-agent", "content-length", "accept-encoding"}}
 
 	dump, err := httputil.DumpRequestOut(req, true)
 	if err != nil {

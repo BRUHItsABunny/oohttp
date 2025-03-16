@@ -113,8 +113,9 @@ func TestReadMIMEHeader(t *testing.T) {
 	r := reader("my-key: Value 1  \r\nLong-key: Even \n Longer Value\r\nmy-Key: Value 2\r\n\n")
 	m, err := r.ReadMIMEHeader()
 	want := MIMEHeader{
-		"My-Key":   {"Value 1", "Value 2"},
-		"Long-Key": {"Even Longer Value"},
+		"My-Key":        {"Value 1", "Value 2"},
+		"Long-Key":      {"Even Longer Value"},
+		"Header-Order:": {"My-Key", "Long-Key", "My-Key"},
 	}
 	if !reflect.DeepEqual(m, want) || err != nil {
 		t.Fatalf("ReadMIMEHeader: %v, %v; want %v", m, err, want)
@@ -124,7 +125,7 @@ func TestReadMIMEHeader(t *testing.T) {
 func TestReadMIMEHeaderSingle(t *testing.T) {
 	r := reader("Foo: bar\n\n")
 	m, err := r.ReadMIMEHeader()
-	want := MIMEHeader{"Foo": {"bar"}}
+	want := MIMEHeader{"Foo": {"bar"}, "Header-Order:": {"Foo"}}
 	if !reflect.DeepEqual(m, want) || err != nil {
 		t.Fatalf("ReadMIMEHeader: %v, %v; want %v", m, err, want)
 	}
@@ -169,7 +170,7 @@ func TestReaderUpcomingHeaderKeys(t *testing.T) {
 func TestReadMIMEHeaderNoKey(t *testing.T) {
 	r := reader(": bar\ntest-1: 1\n\n")
 	m, err := r.ReadMIMEHeader()
-	want := MIMEHeader{"Test-1": {"1"}}
+	want := MIMEHeader{"Test-1": {"1"}, "Header-Order:": {"Test-1"}}
 	if !reflect.DeepEqual(m, want) || err != nil {
 		t.Fatalf("ReadMIMEHeader: %v, %v; want %v", m, err, want)
 	}
@@ -208,9 +209,10 @@ func TestReadMIMEHeaderNonCompliant(t *testing.T) {
 		"SID ":             {"0"},
 		"Audio Mode ":      {"None"},
 		"Privilege ":       {"127"},
+		"Header-Order:":    {"Foo", "Content-Language", "SID ", "Audio Mode ", "Privilege "},
 	}
 	if !reflect.DeepEqual(m, want) || err != nil {
-		t.Fatalf("ReadMIMEHeader =\n%v, %v; want:\n%v", m, err, want)
+		t.Fatalf("ReadMIMEHeader =\n%#v, %v; want:\n%#v", m, err, want)
 	}
 }
 
@@ -299,9 +301,10 @@ func TestReadMIMEHeaderTrimContinued(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := MIMEHeader{
-		"A": {"0"},
-		"B": {"1"},
-		"C": {"2 3 4"},
+		"A":             {"0"},
+		"B":             {"1"},
+		"C":             {"2 3 4"},
+		"Header-Order:": {"A", "B", "C"},
 	}
 	if !reflect.DeepEqual(m, want) {
 		t.Fatalf("ReadMIMEHeader mismatch.\n got: %q\nwant: %q", m, want)

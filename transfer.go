@@ -287,12 +287,12 @@ func (t *transferWriter) addHeaders(hdrs *Header, trace *httptrace.ClientTrace) 
 	// function of the sanitized field triple (Body, ContentLength,
 	// TransferEncoding)
 	if t.shouldSendContentLength() {
-		hdrs.Add("Content-Length", strconv.FormatInt(t.ContentLength, 10))
+		hdrs.Set("Content-Length", strconv.FormatInt(t.ContentLength, 10))
 		if trace != nil && trace.WroteHeaderField != nil {
 			trace.WroteHeaderField("Content-Length", []string{strconv.FormatInt(t.ContentLength, 10)})
 		}
 	} else if chunked(t.TransferEncoding) {
-		hdrs.Add("Transfer-Encoding", "chunked")
+		hdrs.Set("Transfer-Encoding", "chunked")
 		if trace != nil && trace.WroteHeaderField != nil {
 			trace.WroteHeaderField("Transfer-Encoding", []string{"chunked"})
 		}

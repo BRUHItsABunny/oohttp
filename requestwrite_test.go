@@ -50,6 +50,7 @@ var reqWriteTests = []reqWriteTest{
 				"Keep-Alive":       {"300"},
 				"Proxy-Connection": {"keep-alive"},
 				"User-Agent":       {"Fake"},
+				HeaderOrderKey:     {"host", "user-agent", "accept", "accept-charset", "accept-encoding", "accept-language", "keep-alive", "proxy-connection"},
 			},
 			Body:  nil,
 			Close: false,
@@ -88,7 +89,7 @@ var reqWriteTests = []reqWriteTest{
 			},
 			ProtoMajor:       1,
 			ProtoMinor:       1,
-			Header:           Header{},
+			Header:           Header{HeaderOrderKey: {"host", "user-agent", "transfer-encoding"}},
 			TransferEncoding: []string{"chunked"},
 		},
 
@@ -117,7 +118,7 @@ var reqWriteTests = []reqWriteTest{
 			},
 			ProtoMajor:       1,
 			ProtoMinor:       1,
-			Header:           Header{},
+			Header:           Header{HeaderOrderKey: {"host", "user-agent", "connection", "transfer-encoding"}},
 			Close:            true,
 			TransferEncoding: []string{"chunked"},
 		},
@@ -150,7 +151,7 @@ var reqWriteTests = []reqWriteTest{
 			},
 			ProtoMajor:    1,
 			ProtoMinor:    1,
-			Header:        Header{},
+			Header:        Header{HeaderOrderKey: {"host", "user-agent", "connection", "content-length"}},
 			Close:         true,
 			ContentLength: 6,
 		},
@@ -182,6 +183,7 @@ var reqWriteTests = []reqWriteTest{
 			Host:   "example.com",
 			Header: Header{
 				"Content-Length": []string{"10"}, // ignored
+				HeaderOrderKey:   {"host", "user-agent", "content-length"},
 			},
 			ContentLength: 6,
 		},
@@ -209,6 +211,9 @@ var reqWriteTests = []reqWriteTest{
 			Method: "GET",
 			URL:    mustParseURL("/search"),
 			Host:   "www.google.com",
+			Header: Header{
+				HeaderOrderKey: {"host", "user-agent"},
+			},
 		},
 
 		WantWrite: "GET /search HTTP/1.1\r\n" +
@@ -226,6 +231,7 @@ var reqWriteTests = []reqWriteTest{
 			ProtoMajor:    1,
 			ProtoMinor:    1,
 			ContentLength: 0, // as if unset by user
+			Header:        Header{HeaderOrderKey: {"host", "user-agent", "transfer-encoding"}},
 		},
 
 		Body: func() io.ReadCloser { return io.NopCloser(io.LimitReader(strings.NewReader("xx"), 0)) },
@@ -252,6 +258,7 @@ var reqWriteTests = []reqWriteTest{
 			ProtoMajor:    1,
 			ProtoMinor:    1,
 			ContentLength: 0, // as if unset by user
+			Header:        Header{HeaderOrderKey: {"host", "user-agent", "content-length"}},
 		},
 
 		Body: func() io.ReadCloser { return nil },
@@ -278,6 +285,7 @@ var reqWriteTests = []reqWriteTest{
 			ProtoMajor:    1,
 			ProtoMinor:    1,
 			ContentLength: 0, // as if unset by user
+			Header:        Header{HeaderOrderKey: {"host", "user-agent", "transfer-encoding"}},
 		},
 
 		Body: func() io.ReadCloser { return io.NopCloser(io.LimitReader(strings.NewReader("xx"), 1)) },
@@ -385,7 +393,8 @@ var reqWriteTests = []reqWriteTest{
 			ProtoMajor: 1,
 			ProtoMinor: 0,
 			Header: Header{
-				"X-Foo": []string{"X-Bar"},
+				"X-Foo":        []string{"X-Bar"},
+				HeaderOrderKey: {"host", "user-agent", "x-foo"},
 			},
 		},
 
@@ -411,7 +420,8 @@ var reqWriteTests = []reqWriteTest{
 			ProtoMajor: 1,
 			ProtoMinor: 1,
 			Header: Header{
-				"Host": []string{"bad.example.com"},
+				"Host":         []string{"bad.example.com"},
+				HeaderOrderKey: {"host", "user-agent"},
 			},
 		},
 
@@ -431,7 +441,7 @@ var reqWriteTests = []reqWriteTest{
 			},
 			ProtoMajor: 1,
 			ProtoMinor: 1,
-			Header:     Header{},
+			Header:     Header{HeaderOrderKey: {"host", "user-agent"}},
 		},
 
 		WantWrite: "GET /%2F/%2F/ HTTP/1.1\r\n" +
@@ -450,7 +460,7 @@ var reqWriteTests = []reqWriteTest{
 			},
 			ProtoMajor: 1,
 			ProtoMinor: 1,
-			Header:     Header{},
+			Header:     Header{HeaderOrderKey: {"host", "user-agent"}},
 		},
 
 		WantWrite: "GET http://y.google.com/%2F/%2F/ HTTP/1.1\r\n" +
@@ -471,7 +481,8 @@ var reqWriteTests = []reqWriteTest{
 			ProtoMajor: 1,
 			ProtoMinor: 1,
 			Header: Header{
-				"ALL-CAPS": {"x"},
+				"ALL-CAPS":     {"x"},
+				HeaderOrderKey: {"host", "user-agent", "all-caps"},
 			},
 		},
 
@@ -489,6 +500,7 @@ var reqWriteTests = []reqWriteTest{
 			URL: &url.URL{
 				Host: "[fe80::1%en0]",
 			},
+			Header: Header{HeaderOrderKey: {"host", "user-agent"}},
 		},
 
 		WantWrite: "GET / HTTP/1.1\r\n" +
@@ -504,7 +516,8 @@ var reqWriteTests = []reqWriteTest{
 			URL: &url.URL{
 				Host: "www.example.com",
 			},
-			Host: "[fe80::1%en0]:8080",
+			Host:   "[fe80::1%en0]:8080",
+			Header: Header{HeaderOrderKey: {"host", "user-agent"}},
 		},
 
 		WantWrite: "GET / HTTP/1.1\r\n" +
@@ -521,6 +534,7 @@ var reqWriteTests = []reqWriteTest{
 				Scheme: "https", // of proxy.com
 				Host:   "proxy.com",
 			},
+			Header: Header{HeaderOrderKey: {"host", "user-agent"}},
 		},
 		// What we used to do, locking that behavior in:
 		WantWrite: "CONNECT proxy.com HTTP/1.1\r\n" +
@@ -538,6 +552,7 @@ var reqWriteTests = []reqWriteTest{
 				Host:   "proxy.com",
 				Opaque: "backend:443",
 			},
+			Header: Header{HeaderOrderKey: {"host", "user-agent"}},
 		},
 		WantWrite: "CONNECT backend:443 HTTP/1.1\r\n" +
 			"Host: proxy.com\r\n" +
@@ -553,6 +568,7 @@ var reqWriteTests = []reqWriteTest{
 			Header: Header{
 				"X-Foo":             []string{"X-Bar"},
 				"X-Idempotency-Key": nil,
+				HeaderOrderKey:      {"host", "user-agent", "x-foo"},
 			},
 		},
 
@@ -568,6 +584,7 @@ var reqWriteTests = []reqWriteTest{
 			Header: Header{
 				"X-Foo":             []string{"X-Bar"},
 				"X-Idempotency-Key": []string{},
+				HeaderOrderKey:      {"host", "user-agent", "x-foo"},
 			},
 		},
 
@@ -596,6 +613,7 @@ var reqWriteTests = []reqWriteTest{
 			ProtoMajor:    1,
 			ProtoMinor:    1,
 			ContentLength: 0, // as if unset by user
+			Header:        Header{HeaderOrderKey: {"host", "user-agent", "content-length"}},
 		},
 		Body: nil,
 		WantWrite: "PATCH / HTTP/1.1\r\n" +
@@ -815,6 +833,7 @@ func TestRequestWriteClosesBody(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	req.Header = Header{HeaderOrderKey: []string{"host", "user-agent", "transfer-encoding"}}
 	buf := new(strings.Builder)
 	if err := req.Write(buf); err != nil {
 		t.Error(err)

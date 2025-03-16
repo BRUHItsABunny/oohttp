@@ -9223,7 +9223,7 @@ func (cc *http2ClientConn) encodeHeaders(req *Request, addGzipHeader bool, trail
 					kv.values = kv.values[:1]
 				}
 
-				if kv.values[0] == "" {
+				if len(kv.values) == 1 && kv.values[0] == "" {
 					continue
 				}
 
@@ -9737,9 +9737,9 @@ func (rl *http2clientConnReadLoop) handleResponse(cs *http2clientStream, f *http
 		res.ContentLength = -1
 		// res.Body = &http2gzipReader{body: res.Body}
 		res.Body = &DecompressorReader{
-			Reader: res.Body,
+			Reader:   res.Body,
 			Registry: rl.cc.t.t1.DecompressionRegistry,
-			Order: strings.Split(res.Header.Get("Content-Encoding"), ","),
+			Order:    strings.Split(res.Header.Get("Content-Encoding"), ","),
 		}
 		res.Header.Del("Content-Encoding")
 		res.Uncompressed = true

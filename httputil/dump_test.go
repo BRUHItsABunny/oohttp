@@ -53,6 +53,7 @@ var dumpTests = []dumpTest{
 			ProtoMajor:       1,
 			ProtoMinor:       1,
 			TransferEncoding: []string{"chunked"},
+			Header:           http.Header{http.HeaderOrderKey: []string{"host", "transfer-encoding"}},
 		},
 
 		Body: []byte("abcdef"),
@@ -72,7 +73,8 @@ var dumpTests = []dumpTest{
 			ProtoMajor: 1,
 			ProtoMinor: 0,
 			Header: http.Header{
-				"X-Foo": []string{"X-Bar"},
+				"X-Foo":             []string{"X-Bar"},
+				http.HeaderOrderKey: []string{"x-foo"},
 			},
 		},
 
@@ -81,7 +83,7 @@ var dumpTests = []dumpTest{
 	},
 
 	{
-		Req: mustNewRequest("GET", "http://example.com/foo", nil),
+		Req: mustNewRequest("GET", "http://example.com/foo", nil, "host", "user-agent", "accept-encoding"),
 
 		WantDumpOut: "GET /foo HTTP/1.1\r\n" +
 			"Host: example.com\r\n" +
@@ -93,7 +95,7 @@ var dumpTests = []dumpTest{
 	// with a bytes.Buffer and hang with all goroutines not
 	// runnable.
 	{
-		Req: mustNewRequest("GET", "https://example.com/foo", nil),
+		Req: mustNewRequest("GET", "https://example.com/foo", nil, "host", "user-agent", "accept-encoding"),
 		WantDumpOut: "GET /foo HTTP/1.1\r\n" +
 			"Host: example.com\r\n" +
 			"User-Agent: Go-http-client/1.1\r\n" +
@@ -112,6 +114,7 @@ var dumpTests = []dumpTest{
 			ContentLength: 6,
 			ProtoMajor:    1,
 			ProtoMinor:    1,
+			Header:        http.Header{http.HeaderOrderKey: []string{"host", "user-agent", "content-length", "accept-encoding"}},
 		},
 
 		Body: []byte("abcdef"),
@@ -135,7 +138,8 @@ var dumpTests = []dumpTest{
 				Path:   "/",
 			},
 			Header: http.Header{
-				"Content-Length": []string{"8193"},
+				"Content-Length":    []string{"8193"},
+				http.HeaderOrderKey: []string{"host", "user-agent", "content-length", "accept-encoding"},
 			},
 
 			ContentLength: 8193,
@@ -207,7 +211,7 @@ var dumpTests = []dumpTest{
 	// Issue 18506: make drainBody recognize NoBody. Otherwise
 	// this was turning into a chunked request.
 	{
-		Req: mustNewRequest("POST", "http://example.com/foo", http.NoBody),
+		Req: mustNewRequest("POST", "http://example.com/foo", http.NoBody, "host", "user-agent", "content-length", "accept-encoding"),
 		WantDumpOut: "POST /foo HTTP/1.1\r\n" +
 			"Host: example.com\r\n" +
 			"User-Agent: Go-http-client/1.1\r\n" +
@@ -229,6 +233,7 @@ var dumpTests = []dumpTest{
 			ProtoMajor:    1,
 			ProtoMinor:    1,
 			Body:          &eofReader{},
+			Header:        http.Header{http.HeaderOrderKey: []string{"host", "user-agent", "transfer-encoding", "accept-encoding"}},
 		},
 		NoBody: true,
 		WantDumpOut: "PUT /test HTTP/1.1\r\n" +
@@ -376,11 +381,12 @@ func mustParseURL(s string) *url.URL {
 	return u
 }
 
-func mustNewRequest(method, url string, body io.Reader) *http.Request {
+func mustNewRequest(method, url string, body io.Reader, headerOrder ...string) *http.Request {
 	req, err := http.NewRequest(method, url, body)
 	if err != nil {
 		panic(fmt.Sprintf("NewRequest(%q, %q, %p) err = %v", method, url, body, err))
 	}
+	req.Header = http.Header{http.HeaderOrderKey: headerOrder}
 	return req
 }
 

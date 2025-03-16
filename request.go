@@ -670,13 +670,9 @@ func (r *Request) write(w io.Writer, usingProxy bool, extraHeaders Header, waitF
 	}
 
 	// Header lines
-	if _, ok := r.Header["Host"]; !ok {
-		if _, ok := r.Header["host"]; !ok {
-			r.Header.Set("Host", host)
-			if trace != nil && trace.WroteHeaderField != nil {
-				trace.WroteHeaderField("Host", []string{host})
-			}
-		}
+	r.Header.Set("Host", host)
+	if trace != nil && trace.WroteHeaderField != nil {
+		trace.WroteHeaderField("Host", []string{host})
 	}
 
 	// Use the defaultUserAgent unless the Header contains one, which

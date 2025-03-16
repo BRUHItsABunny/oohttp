@@ -1483,6 +1483,7 @@ func testClientCopyHeadersOnRedirect(t *testing.T, mode testMode) {
 			"Accept-Encoding": []string{"gzip"},
 			"Cookie":          []string{"foo=bar"},
 			"Authorization":   []string{"secretpassword"},
+			HeaderOrderKey:    []string{"Accept-Encoding", "Authorization", "Cookie", "Host", "Referer", "User-Agent", "X-Foo"},
 		}
 		if !reflect.DeepEqual(r.Header, want) {
 			t.Errorf("Request.Header = %#v; want %#v", r.Header, want)

@@ -331,6 +331,8 @@ func (tt h12Compare) run(t *testing.T) {
 
 	eres1 := mostlyCopy(res1)
 	eres2 := mostlyCopy(res2)
+	delete(res1.Header, HeaderOrderKey) // Irrelevant to test
+
 	if !reflect.DeepEqual(eres1, eres2) {
 		t.Errorf("Response headers to handler differed:\nhttp/1 (%v):\n\t%#v\nhttp/2 (%v):\n\t%#v",
 			cst1.ts.URL, eres1, cst2.ts.URL, eres2)
@@ -775,7 +777,8 @@ func testTrailersServerToClient(t *testing.T, mode testMode, flush bool) {
 		t.Errorf("ContentLength = %v; want %v", res.ContentLength, wantLen)
 	}
 
-	delete(res.Header, "Date") // irrelevant for test
+	delete(res.Header, "Date")          // irrelevant for test
+	delete(res.Header, "Header-Order:") // irrelevant for test
 	if !reflect.DeepEqual(res.Header, wantHeader) {
 		t.Errorf("Header = %v; want %v", res.Header, wantHeader)
 	}
@@ -1430,6 +1433,7 @@ func testServerUndeclaredTrailers(t *testing.T, mode testMode) {
 	res.Body.Close()
 	delete(res.Header, "Date")
 	delete(res.Header, "Content-Type")
+	delete(res.Header, HeaderOrderKey) // Irrelevant to test
 
 	if want := (Header{"Foo": {"Bar"}}); !reflect.DeepEqual(res.Header, want) {
 		t.Errorf("Header = %#v; want %#v", res.Header, want)
