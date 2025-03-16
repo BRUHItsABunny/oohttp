@@ -480,7 +480,7 @@ var readRequestErrorTests = []struct {
 
 	header Header
 }{
-	0: {"GET / HTTP/1.1\r\nheader:foo\r\n\r\n", "", Header{"Header": {"foo"}, HeaderOrderKey: {"foo"}}},
+	0: {"GET / HTTP/1.1\r\nheader:foo\r\n\r\n", "", Header{"Header": {"foo"}, HeaderOrderKey: {"Header"}}},
 	1: {"GET / HTTP/1.1\r\nheader:foo\r\n", io.ErrUnexpectedEOF.Error(), nil},
 	2: {"", io.EOF.Error(), nil},
 	3: {

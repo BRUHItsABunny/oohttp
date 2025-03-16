@@ -420,7 +420,7 @@ func TestReadRequest(t *testing.T) {
 		rbody := req.Body
 		req.Body = nil
 		testName := fmt.Sprintf("Test %d (%q)", i, tt.Raw)
-		delete(req.Header, "Header-Order:") // irrelevant to test
+		// delete(req.Header, "Header-Order:") // irrelevant to test
 		diff(t, testName, req, tt.Req)
 		var bout strings.Builder
 		if rbody != nil {

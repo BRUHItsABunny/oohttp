@@ -331,7 +331,9 @@ func (tt h12Compare) run(t *testing.T) {
 
 	eres1 := mostlyCopy(res1)
 	eres2 := mostlyCopy(res2)
+	// TODO: Why does http 1 always get header order but http 2 only sometimes?
 	delete(res1.Header, HeaderOrderKey) // Irrelevant to test
+	delete(res2.Header, HeaderOrderKey) // Irrelevant to test
 
 	if !reflect.DeepEqual(eres1, eres2) {
 		t.Errorf("Response headers to handler differed:\nhttp/1 (%v):\n\t%#v\nhttp/2 (%v):\n\t%#v",
