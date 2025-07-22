@@ -99,6 +99,15 @@ func http2asciiToLower(s string) (lower string, ok bool) {
 	return strings.ToLower(s), true
 }
 
+func headerHasKeyCaseInsensitive(h Header, name string) ([]string, bool) {
+	for k, v := range h {
+		if strings.EqualFold(k, name) {
+			return v, true
+		}
+	}
+	return nil, false
+}
+
 // A list of the possible cipher suite ids. Taken from
 // https://www.iana.org/assignments/tls-parameters/tls-parameters.txt
 
@@ -9139,7 +9148,7 @@ func (cc *http2ClientConn) encodeHeaders(req *Request, addGzipHeader bool, trail
 		}
 
 		// Does not include accept-encoding header if its defined in req.Header
-		_, addGzipHeader = req.Header["accept-encoding"]
+		_, addGzipHeader = headerHasKeyCaseInsensitive(req.Header, "accept-encoding")
 		if !addGzipHeader { // presence check
 			req.Header.Set("accept-encoding", "gzip")
 			// we just aded it, set to true
@@ -9149,7 +9158,7 @@ func (cc *http2ClientConn) encodeHeaders(req *Request, addGzipHeader bool, trail
 			addGzipHeader = false
 		}
 
-		UA, didUA := req.Header["user-agent"]
+		UA, didUA := headerHasKeyCaseInsensitive(req.Header, "user-agent")
 		if didUA {
 			switch len(UA) {
 			case 0:
@@ -9737,9 +9746,9 @@ func (rl *http2clientConnReadLoop) handleResponse(cs *http2clientStream, f *http
 		res.ContentLength = -1
 		// res.Body = &http2gzipReader{body: res.Body}
 		res.Body = &DecompressorReader{
-			Reader: res.Body,
+			Reader:   res.Body,
 			Registry: rl.cc.t.t1.DecompressionRegistry,
-			Order: strings.Split(res.Header.Get("Content-Encoding"), ","),
+			Order:    strings.Split(res.Header.Get("Content-Encoding"), ","),
 		}
 		res.Header.Del("Content-Encoding")
 		res.Uncompressed = true
