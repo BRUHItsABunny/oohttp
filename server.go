@@ -17,7 +17,7 @@ import (
 	"io"
 	"log"
 	"maps"
-	"math/rand"
+	"math/rand/v2"
 	"net"
 	"net/textproto"
 	"net/url"
@@ -978,11 +978,18 @@ func (c *conn) readRequest(ctx context.Context) (w *response, err error) {
 		return nil, ErrHijacked
 	}
 
+	var (
+		wholeReqDeadline time.Time // or zero if none
+		hdrDeadline      time.Time // or zero if none
+	)
 	t0 := time.Now()
-	var wholeReqDeadline time.Time // or zero if none
+	if d := c.server.readHeaderTimeout(); d > 0 {
+		hdrDeadline = t0.Add(d)
+	}
 	if d := c.server.ReadTimeout; d > 0 {
 		wholeReqDeadline = t0.Add(d)
 	}
+	c.rwc.SetReadDeadline(hdrDeadline)
 	if d := c.server.WriteTimeout; d > 0 {
 		defer func() {
 			c.rwc.SetWriteDeadline(time.Now().Add(d))
@@ -1038,7 +1045,10 @@ func (c *conn) readRequest(ctx context.Context) (w *response, err error) {
 		body.doEarlyClose = true
 	}
 
-	c.rwc.SetReadDeadline(wholeReqDeadline)
+	// Adjust the read deadline if necessary.
+	if !hdrDeadline.Equal(wholeReqDeadline) {
+		c.rwc.SetReadDeadline(wholeReqDeadline)
+	}
 
 	w = &response{
 		conn:          c,
@@ -1971,10 +1981,6 @@ func (c *conn) serve(ctx context.Context) {
 	c.bufr = newBufioReader(c.r)
 	c.bufw = newBufioWriterSize(checkConnErrorWriter{c}, 4<<10)
 
-	if d := c.server.readHeaderTimeout(); d > 0 {
-		c.rwc.SetReadDeadline(time.Now().Add(d))
-	}
-
 	protos := c.server.protocols()
 	if c.tlsState == nil && protos.UnencryptedHTTP2() {
 		if c.maybeServeUnencryptedHTTP2(ctx) {
@@ -2104,11 +2110,7 @@ func (c *conn) serve(ctx context.Context) {
 			return
 		}
 
-		if d := c.server.readHeaderTimeout(); d > 0 {
-			c.rwc.SetReadDeadline(time.Now().Add(d))
-		} else {
-			c.rwc.SetReadDeadline(time.Time{})
-		}
+		c.rwc.SetReadDeadline(time.Time{})
 	}
 }
 
@@ -3159,7 +3161,7 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	pollIntervalBase := time.Millisecond
 	nextPollInterval := func() time.Duration {
 		// Add 10% jitter.
-		interval := pollIntervalBase + time.Duration(rand.Intn(int(pollIntervalBase/10)))
+		interval := pollIntervalBase + time.Duration(rand.IntN(int(pollIntervalBase/10)))
 		// Double and clamp for next time.
 		pollIntervalBase *= 2
 		if pollIntervalBase > shutdownPollIntervalMax {
