@@ -13,9 +13,9 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"reflect"
 	"regexp"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -386,12 +386,11 @@ func TestCopyError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Write: %v", err)
 	}
-
 	res, err := http.ReadResponse(bufio.NewReader(conn), req)
 	if err != nil {
 		t.Fatalf("ReadResponse: %v", err)
 	}
-
+	defer res.Body.Close()
 	var buf [5000]byte
 	n, err := io.ReadFull(res.Body, buf[:])
 	if err != nil {
@@ -512,7 +511,7 @@ func TestRemoveLeadingDuplicates(t *testing.T) {
 	}
 	for _, tt := range tests {
 		got := removeLeadingDuplicates(tt.env)
-		if !reflect.DeepEqual(got, tt.want) {
+		if !slices.Equal(got, tt.want) {
 			t.Errorf("removeLeadingDuplicates(%q) = %q; want %q", tt.env, got, tt.want)
 		}
 	}

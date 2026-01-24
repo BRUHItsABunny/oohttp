@@ -10,7 +10,7 @@ import (
 	"log"
 	"os"
 	"runtime"
-	"sort"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -32,7 +32,7 @@ func TestMain(m *testing.M) {
 func interestingGoroutines() (gs []string) {
 	buf := make([]byte, 2<<20)
 	buf = buf[:runtime.Stack(buf, true)]
-	for _, g := range strings.Split(string(buf), "\n\n") {
+	for g := range strings.SplitSeq(string(buf), "\n\n") {
 		_, stack, _ := strings.Cut(g, "\n")
 		stack = strings.TrimSpace(stack)
 		if stack == "" ||
@@ -51,7 +51,7 @@ func interestingGoroutines() (gs []string) {
 		}
 		gs = append(gs, stack)
 	}
-	sort.Strings(gs)
+	slices.Sort(gs)
 	return
 }
 
@@ -143,7 +143,7 @@ func afterTest(t testing.TB) {
 		").noteClientGone(":     "a closenotifier sender",
 	}
 	var stacks string
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 2500; i++ {
 		bad = ""
 		stacks = strings.Join(interestingGoroutines(), "\n\n")
 		for substr, what := range badSubstring {
@@ -157,7 +157,7 @@ func afterTest(t testing.TB) {
 		}
 		// Bad stuff found, but goroutines might just still be
 		// shutting down, so give it some time.
-		time.Sleep(250 * time.Millisecond)
+		time.Sleep(1 * time.Millisecond)
 	}
 	t.Errorf("Test appears to have leaked %s:\n%s", bad, stacks)
 }
