@@ -884,7 +884,7 @@ func (c *http2dialCall) dial(ctx context.Context, addr string) {
 // This code decides which ones live or die.
 // The return value used is whether c was used.
 // c is never closed.
-func (p *http2clientConnPool) addConnIfNeeded(key string, t *http2Transport, c TLSConn) (used bool, err error) {
+func (p *http2clientConnPool) addConnIfNeeded(key string, t *http2Transport, c net.Conn) (used bool, err error) {
 	p.mu.Lock()
 	for _, cc := range p.conns[key] {
 		if cc.CanTakeNewRequest() {
@@ -920,7 +920,7 @@ type http2addConnCall struct {
 	err  error
 }
 
-func (c *http2addConnCall) run(t *http2Transport, key string, tc TLSConn) {
+func (c *http2addConnCall) run(t *http2Transport, key string, tc net.Conn) {
 	cc, err := t.NewClientConn(tc)
 
 	p := c.p
@@ -4295,7 +4295,7 @@ func http2ConfigureServer(s *Server, conf *http2Server) error {
 	if s.TLSNextProto == nil {
 		s.TLSNextProto = map[string]func(*Server, TLSConn, Handler){}
 	}
-	protoHandler := func(hs *Server, c TLSConn, h Handler, sawClientPreface bool) {
+	protoHandler := func(hs *Server, c net.Conn, h Handler, sawClientPreface bool) {
 		if http2testHookOnConn != nil {
 			http2testHookOnConn()
 		}
@@ -4318,14 +4318,24 @@ func http2ConfigureServer(s *Server, conf *http2Server) error {
 			SawClientPreface: sawClientPreface,
 		})
 	}
-	s.TLSNextProto[http2NextProtoTLS] = func(hs *Server, c *tls.Conn, h Handler) {
+	s.TLSNextProto[http2NextProtoTLS] = func(hs *Server, c TLSConn, h Handler) {
 		protoHandler(hs, c, h, false)
 	}
 	// The "unencrypted_http2" TLSNextProto key is used to pass off non-TLS HTTP/2 conns.
 	//
 	// A connection passed in this method has already had the HTTP/2 preface read from it.
-	s.TLSNextProto[http2nextProtoUnencryptedHTTP2] = func(hs *Server, c *tls.Conn, h Handler) {
-		nc, err := http2unencryptedNetConnFromTLSConn(c)
+	s.TLSNextProto[http2nextProtoUnencryptedHTTP2] = func(hs *Server, c TLSConn, h Handler) {
+		tc, ok := c.(*tls.Conn)
+		if !ok {
+			if lg := hs.ErrorLog; lg != nil {
+				lg.Print("http2: TLSNextProto conn not *tls.Conn")
+			} else {
+				log.Print("http2: TLSNextProto conn not *tls.Conn")
+			}
+			go c.Close()
+			return
+		}
+		nc, err := http2unencryptedNetConnFromTLSConn(tc)
 		if err != nil {
 			if lg := hs.ErrorLog; lg != nil {
 				lg.Print(err)
@@ -7615,7 +7625,7 @@ func http2configureTransports(t1 *Transport) (*http2Transport, error) {
 	if !http2strSliceContains(t1.TLSClientConfig.NextProtos, "http/1.1") {
 		t1.TLSClientConfig.NextProtos = append(t1.TLSClientConfig.NextProtos, "http/1.1")
 	}
-	upgradeFn := func(scheme, authority string, c TLSConn) RoundTripper {
+	upgradeFn := func(scheme, authority string, c net.Conn) RoundTripper {
 		addr := http2authorityAddr(scheme, authority)
 		if used, err := connPool.addConnIfNeeded(addr, t2, c); err != nil {
 			go c.Close()
@@ -7635,12 +7645,17 @@ func http2configureTransports(t1 *Transport) (*http2Transport, error) {
 	if t1.TLSNextProto == nil {
 		t1.TLSNextProto = make(map[string]func(string, TLSConn) RoundTripper)
 	}
-	t1.TLSNextProto[http2NextProtoTLS] = func(authority string, c *tls.Conn) RoundTripper {
+	t1.TLSNextProto[http2NextProtoTLS] = func(authority string, c TLSConn) RoundTripper {
 		return upgradeFn("https", authority, c)
 	}
 	// The "unencrypted_http2" TLSNextProto key is used to pass off non-TLS HTTP/2 conns.
-	t1.TLSNextProto[http2nextProtoUnencryptedHTTP2] = func(authority string, c *tls.Conn) RoundTripper {
-		nc, err := http2unencryptedNetConnFromTLSConn(c)
+	t1.TLSNextProto[http2nextProtoUnencryptedHTTP2] = func(authority string, c TLSConn) RoundTripper {
+		tc, ok := c.(*tls.Conn)
+		if !ok {
+			go c.Close()
+			return http2erringRoundTripper{errors.New("http2: TLSNextProto conn not *tls.Conn")}
+		}
+		nc, err := http2unencryptedNetConnFromTLSConn(tc)
 		if err != nil {
 			go c.Close()
 			return http2erringRoundTripper{err}
@@ -9890,18 +9905,39 @@ func (rl *http2clientConnReadLoop) handleResponse(cs *http2clientStream, f *http
 	cs.bytesRemain = res.ContentLength
 	res.Body = http2transportResponseBody{cs}
 
-	// if cs.requestedGzip && http2asciiEqualFold(res.Header.Get("Content-Encoding"), "gzip") {
-	if cs.requestedGzip {
-		res.Header.Del("Content-Length")
-		res.ContentLength = -1
-		// res.Body = &http2gzipReader{body: res.Body}
-		res.Body = &DecompressorReader{
-			Reader:   res.Body,
-			Registry: rl.cc.t.t1.DecompressionRegistry,
-			Order:    strings.Split(res.Header.Get("Content-Encoding"), ","),
+	// Only apply decompression if the transport added Accept-Encoding AND
+	// the response has a Content-Encoding header indicating compression AND
+	// all encodings are supported by the registry.
+	contentEncoding := res.Header.Get("Content-Encoding")
+	if cs.requestedGzip && contentEncoding != "" && contentEncoding != "identity" {
+		// Check if all encodings in the Content-Encoding header are supported
+		registry := rl.cc.t.t1.DecompressionRegistry
+		if registry == nil {
+			registry = DefaultDecompressionRegistry
 		}
-		res.Header.Del("Content-Encoding")
-		res.Uncompressed = true
+		encodings := strings.Split(contentEncoding, ",")
+		allSupported := true
+		for _, enc := range encodings {
+			enc = strings.TrimSpace(strings.ToLower(enc))
+			if enc == "" {
+				continue
+			}
+			if _, ok := registry[enc]; !ok {
+				allSupported = false
+				break
+			}
+		}
+		if allSupported {
+			res.Header.Del("Content-Length")
+			res.ContentLength = -1
+			res.Body = &DecompressorReader{
+				Reader:   res.Body,
+				Registry: registry,
+				Order:    encodings,
+			}
+			res.Header.Del("Content-Encoding")
+			res.Uncompressed = true
+		}
 	}
 	return res, nil
 }
@@ -10656,27 +10692,6 @@ func http2traceFirstResponseByte(trace *httptrace.ClientTrace) {
 	if trace != nil && trace.GotFirstResponseByte != nil {
 		trace.GotFirstResponseByte()
 	}
-}
-
-func http2traceGot1xxResponseFunc(trace *httptrace.ClientTrace) func(int, textproto.MIMEHeader) error {
-	if trace != nil {
-		return trace.Got1xxResponse
-	}
-	return nil
-}
-
-// dialTLSWithContext uses tls.Dialer, added in Go 1.15, to open a TLS
-// connection.
-func (t *http2Transport) dialTLSWithContext(ctx context.Context, network, addr string, cfg *tls.Config) (*tls.Conn, error) {
-	dialer := &tls.Dialer{
-		Config: cfg,
-	}
-	cn, err := dialer.DialContext(ctx, network, addr)
-	if err != nil {
-		return nil, err
-	}
-	tlsCn := cn.(*tls.Conn) // DialContext comment promises this will always succeed
-	return tlsCn, nil
 }
 
 const http2nextProtoUnencryptedHTTP2 = "unencrypted_http2"

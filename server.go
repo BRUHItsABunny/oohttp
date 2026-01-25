@@ -32,7 +32,11 @@ import (
 	_ "unsafe" // for linkname
 
 	"golang.org/x/net/http/httpguts"
+
+	"github.com/ooni/oohttp/internal/godebug"
 )
+
+var http2server = godebug.New("http2server")
 
 // Errors used by the HTTP server.
 var (

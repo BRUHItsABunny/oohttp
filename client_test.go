@@ -37,6 +37,22 @@ var robotsTxtHandler = HandlerFunc(func(w ResponseWriter, r *Request) {
 	fmt.Fprintf(w, "User-agent: go\nDisallow: /something/")
 })
 
+// copyHeaderWithoutOrderKeys returns a copy of the header without the
+// Header-Order: and PHeader-Order: keys that are specific to the oohttp fork.
+func copyHeaderWithoutOrderKeys(h Header) Header {
+	if h == nil {
+		return nil
+	}
+	result := make(Header, len(h))
+	for k, v := range h {
+		if k == HeaderOrderKey || k == PHeaderOrderKey {
+			continue
+		}
+		result[k] = v
+	}
+	return result
+}
+
 // pedanticReadAll works like io.ReadAll but additionally
 // verifies that r obeys the documented io.Reader contract.
 func pedanticReadAll(r io.Reader) (b []byte, err error) {
@@ -1493,7 +1509,9 @@ func testClientCopyHeadersOnRedirect(t *testing.T, mode testMode) {
 			"Cookie":          []string{"foo=bar"},
 			"Authorization":   []string{"secretpassword"},
 		}
-		if !reflect.DeepEqual(r.Header, want) {
+		// Exclude oohttp-specific Header-Order keys from comparison
+		got := copyHeaderWithoutOrderKeys(r.Header)
+		if !reflect.DeepEqual(got, want) {
 			t.Errorf("Request.Header = %#v; want %#v", r.Header, want)
 		}
 		if t.Failed() {
@@ -1516,7 +1534,9 @@ func testClientCopyHeadersOnRedirect(t *testing.T, mode testMode) {
 			"Cookie":        []string{"foo=bar"},
 			"Authorization": []string{"secretpassword"},
 		}
-		if !reflect.DeepEqual(r.Header, want) {
+		// Exclude oohttp-specific Header-Order keys from comparison
+		got := copyHeaderWithoutOrderKeys(r.Header)
+		if !reflect.DeepEqual(got, want) {
 			t.Errorf("CheckRedirect Request.Header = %#v; want %#v", r.Header, want)
 		}
 		return nil

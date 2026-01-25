@@ -426,6 +426,11 @@ func toJSON(v any) string {
 
 func TestReadSetCookies(t *testing.T) {
 	for i, tt := range readSetCookiesTests {
+		// Skip tests that rely on runtime GODEBUG changes - the oohttp fork
+		// doesn't support this. See internal/godebug/godebug.go for details.
+		if tt.godebug != "" {
+			continue
+		}
 		t.Setenv("GODEBUG", tt.godebug)
 		for n := 0; n < 2; n++ { // to verify readSetCookies doesn't mutate its input
 			c := readSetCookies(tt.header)
@@ -518,6 +523,11 @@ var readCookiesTests = []struct {
 
 func TestReadCookies(t *testing.T) {
 	for i, tt := range readCookiesTests {
+		// Skip tests that rely on runtime GODEBUG changes - the oohttp fork
+		// doesn't support this. See internal/godebug/godebug.go for details.
+		if tt.godebug != "" {
+			continue
+		}
 		t.Setenv("GODEBUG", tt.godebug)
 		for n := 0; n < 2; n++ { // to verify readCookies doesn't mutate its input
 			c := readCookies(tt.header, tt.filter)
@@ -789,6 +799,11 @@ func TestParseCookie(t *testing.T) {
 		},
 	}
 	for i, tt := range tests {
+		// Skip tests that rely on runtime GODEBUG changes - the oohttp fork
+		// doesn't support this. See internal/godebug/godebug.go for details.
+		if tt.godebug != "" {
+			continue
+		}
 		t.Setenv("GODEBUG", tt.godebug)
 		gotCookies, gotErr := ParseCookie(tt.line)
 		if !errors.Is(gotErr, tt.err) {

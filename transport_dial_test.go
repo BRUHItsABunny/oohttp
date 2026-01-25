@@ -8,9 +8,10 @@ import (
 	"context"
 	"io"
 	"net"
-	"net/http"
-	"net/http/httptrace"
 	"testing"
+
+	. "github.com/ooni/oohttp"
+	httptrace "github.com/ooni/oohttp/httptrace"
 )
 
 func TestTransportPoolConnReusePriorConnection(t *testing.T) {
@@ -96,7 +97,7 @@ type transportDialTesterRoundTrip struct {
 	finished    bool
 
 	done chan struct{} // closed when RoundTrip returns:w
-	res  *http.Response
+	res  *Response
 	err  error
 	conn *transportDialTesterConn
 }
@@ -118,15 +119,15 @@ func newTransportDialTester(t *testing.T, mode testMode) *transportDialTester {
 		t:     t,
 		dials: make(chan *transportDialTesterConn),
 	}
-	dt.cst = newClientServerTest(t, mode, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	dt.cst = newClientServerTest(t, mode, HandlerFunc(func(w ResponseWriter, r *Request) {
 		// Write response headers when we receive a request.
-		http.NewResponseController(w).EnableFullDuplex()
+		NewResponseController(w).EnableFullDuplex()
 		w.WriteHeader(200)
-		http.NewResponseController(w).Flush()
+		NewResponseController(w).Flush()
 		// Wait for the client to send the request body,
 		// to synchronize with the rest of the test.
 		io.ReadAll(r.Body)
-	}), func(tr *http.Transport) {
+	}), func(tr *Transport) {
 		tr.DialContext = func(ctx context.Context, network, address string) (net.Conn, error) {
 			c := &transportDialTesterConn{
 				t:     t,
@@ -176,7 +177,7 @@ func (dt *transportDialTester) roundTrip() *transportDialTesterRoundTrip {
 				rt.conn = info.Conn.(*transportDialTesterConn)
 			},
 		})
-		req, _ := http.NewRequestWithContext(ctx, "POST", dt.cst.ts.URL, pr)
+		req, _ := NewRequestWithContext(ctx, "POST", dt.cst.ts.URL, pr)
 		req.Header.Set("Content-Type", "text/plain")
 		rt.res, rt.err = dt.cst.tr.RoundTrip(req)
 		dt.t.Logf("RoundTrip %v: done (err:%v)", rt.roundTripID, rt.err)

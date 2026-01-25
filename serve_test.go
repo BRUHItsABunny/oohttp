@@ -41,9 +41,9 @@ import (
 	httptrace "github.com/ooni/oohttp/httptrace"
 	httputil "github.com/ooni/oohttp/httputil"
 	internal "github.com/ooni/oohttp/internal"
-	synctest "github.com/ooni/oohttp/internal/synctest"
 	testcert "github.com/ooni/oohttp/internal/testcert"
 	testenv "github.com/ooni/oohttp/internal/testenv"
+	"testing/synctest"
 )
 
 type dummyAddr string

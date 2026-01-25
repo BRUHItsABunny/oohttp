@@ -34,6 +34,7 @@ package godebug
 // meaning it cannot introduce a GODEBUG setting of its own.
 // We keep imports to the absolute bare minimum.
 import (
+	"os"
 	_ "runtime"
 	"sync"
 	"sync/atomic"
@@ -131,11 +132,11 @@ var empty value
 
 // Value returns the current value for the GODEBUG setting s.
 //
-// Value maintains an internal cache that is synchronized
-// with changes to the $GODEBUG environment variable,
-// making Value efficient to call as frequently as needed.
-// Clients should therefore typically not attempt their own
-// caching of Value's result.
+// NOTE: code specific to github.com/ooni/oohttp
+// Unlike the standard library, we read from os.Getenv directly each time
+// to support tests that use t.Setenv to change GODEBUG mid-test.
+// This is slightly less efficient but necessary since we don't hook into
+// the runtime to get notified of environment changes.
 func (s *Setting) Value() string {
 	s.once.Do(func() {
 		s.setting = lookup(s.Name())
@@ -143,11 +144,42 @@ func (s *Setting) Value() string {
 			panic("godebug: Value of name not listed in godebugs.All: " + s.name)
 		}
 	})
-	v := *s.value.Load()
-	if v.bisect != nil && !v.bisect.Stack(&stderr) {
-		return ""
+	// Read GODEBUG directly from environment to support t.Setenv in tests
+	env := os.Getenv("GODEBUG")
+	return parseValue(env, s.Name())
+}
+
+// parseValue extracts the value for the given name from a GODEBUG string.
+func parseValue(s, name string) string {
+	for len(s) > 0 {
+		var kv string
+		if i := indexOf(s, ','); i >= 0 {
+			kv, s = s[:i], s[i+1:]
+		} else {
+			kv, s = s, ""
+		}
+		if i := indexOf(kv, '='); i >= 0 {
+			if kv[:i] == name {
+				v := kv[i+1:]
+				// Handle bisect pattern (value#pattern)
+				if j := indexOf(v, '#'); j >= 0 {
+					v = v[:j]
+				}
+				return v
+			}
+		}
 	}
-	return v.text
+	return ""
+}
+
+// indexOf returns the index of the first instance of c in s, or -1.
+func indexOf(s string, c byte) int {
+	for i := 0; i < len(s); i++ {
+		if s[i] == c {
+			return i
+		}
+	}
+	return -1
 }
 
 // lookup returns the unique *setting value for the given name.
@@ -168,7 +200,6 @@ func lookup(name string) *setting {
 
 var godebugDefault string
 var godebugUpdate atomic.Pointer[func(string, string)]
-var godebugEnv atomic.Pointer[string] // set by parsedebugvars
 var godebugNewIncNonDefault atomic.Pointer[func(string) func()]
 
 // setUpdate mimcs runtime.godebug_setUpdate
@@ -182,16 +213,10 @@ func setUpdate(update func(string, string)) {
 // godebugNotify mimics runtime.godebugNotify
 func godebugNotify(envChanged bool) {
 	update := godebugUpdate.Load()
-	var env string
-	if p := godebugEnv.Load(); p != nil {
-		env = *p
-	}
 	// NOTE: code specific to github.com/ooni/oohttp
-	// we omit this check since the only invocation we have is with envChanged = false
-	// this is done to avoid forking a large portion of the runtime and internal packages
-	// if envChanged {
-	// reparsedebugvars(env)
-	// }
+	// Read GODEBUG directly from the environment instead of relying on
+	// runtime's cached value, since we don't fork the runtime.
+	env := os.Getenv("GODEBUG")
 	if update != nil {
 		(*update)(godebugDefault, env)
 	}

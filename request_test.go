@@ -21,6 +21,7 @@ import (
 	"reflect"
 	"regexp"
 	"slices"
+	"sort"
 	"strings"
 	"testing"
 
@@ -532,8 +533,16 @@ func TestReadRequestErrors(t *testing.T) {
 				t.Errorf("#%d: got nil err; want %q", i, tt.err)
 			}
 
-			if !reflect.DeepEqual(tt.header, req.Header) {
-				t.Errorf("#%d: gotHeader: %q wantHeader: %q", i, req.Header, tt.header)
+			// Exclude oohttp-specific Header-Order: and PHeader-Order: keys from comparison
+			gotHeader := make(Header, len(req.Header))
+			for k, v := range req.Header {
+				if k == HeaderOrderKey || k == PHeaderOrderKey {
+					continue
+				}
+				gotHeader[k] = v
+			}
+			if !reflect.DeepEqual(tt.header, gotHeader) {
+				t.Errorf("#%d: gotHeader: %q wantHeader: %q", i, gotHeader, tt.header)
 			}
 			continue
 		}
@@ -760,14 +769,16 @@ func TestRequestWriteBufferedWriter(t *testing.T) {
 	got := []string{}
 	req, _ := NewRequest("GET", "http://foo.com/", nil)
 	req.Write(logWrites{t, &got})
+	// Concatenate oohttp's separate header writes
+	gotConcat := concatenateWrites(got)
 	want := []string{
 		"GET / HTTP/1.1\r\n",
 		"Host: foo.com\r\n",
 		"User-Agent: " + DefaultUserAgent + "\r\n",
 		"\r\n",
 	}
-	if !slices.Equal(got, want) {
-		t.Errorf("Writes = %q\n  Want = %q", got, want)
+	if !equalWritesSorted(gotConcat, want) {
+		t.Errorf("Writes = %q\n  Want = %q", gotConcat, want)
 	}
 }
 
@@ -780,14 +791,16 @@ func TestRequestBadHostHeader(t *testing.T) {
 	req.Host = "foo.com\nnewline"
 	req.URL.Host = "foo.com\nnewline"
 	req.Write(logWrites{t, &got})
+	// Concatenate oohttp's separate header writes
+	gotConcat := concatenateWrites(got)
 	want := []string{
 		"GET /after HTTP/1.1\r\n",
 		"Host: \r\n",
 		"User-Agent: " + DefaultUserAgent + "\r\n",
 		"\r\n",
 	}
-	if !slices.Equal(got, want) {
-		t.Errorf("Writes = %q\n  Want = %q", got, want)
+	if !equalWritesSorted(gotConcat, want) {
+		t.Errorf("Writes = %q\n  Want = %q", gotConcat, want)
 	}
 }
 
@@ -799,15 +812,58 @@ func TestRequestBadUserAgent(t *testing.T) {
 	}
 	req.Header.Set("User-Agent", "evil\r\nX-Evil: evil")
 	req.Write(logWrites{t, &got})
+	// Concatenate oohttp's separate header writes
+	gotConcat := concatenateWrites(got)
 	want := []string{
 		"GET /after HTTP/1.1\r\n",
 		"Host: foo\r\n",
 		"User-Agent: evil  X-Evil: evil\r\n",
 		"\r\n",
 	}
-	if !slices.Equal(got, want) {
-		t.Errorf("Writes = %q\n  Want = %q", got, want)
+	if !equalWritesSorted(gotConcat, want) {
+		t.Errorf("Writes = %q\n  Want = %q", gotConcat, want)
 	}
+}
+
+// concatenateWrites combines oohttp's separate header part writes into complete lines.
+// oohttp writes headers as (key, ": ", value, "\r\n") separately.
+func concatenateWrites(writes []string) []string {
+	var result []string
+	var current string
+	for _, s := range writes {
+		current += s
+		if strings.HasSuffix(current, "\r\n") {
+			result = append(result, current)
+			current = ""
+		}
+	}
+	if current != "" {
+		result = append(result, current)
+	}
+	return result
+}
+
+// equalWritesSorted compares two write slices, sorting headers for comparison
+// since oohttp sorts headers alphabetically by default.
+func equalWritesSorted(got, want []string) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	if len(got) < 2 {
+		return slices.Equal(got, want)
+	}
+	// First line (request line) and last line (\r\n) must match exactly
+	if got[0] != want[0] || got[len(got)-1] != want[len(want)-1] {
+		return false
+	}
+	// Sort middle lines (headers) for comparison
+	gotHeaders := make([]string, len(got)-2)
+	wantHeaders := make([]string, len(want)-2)
+	copy(gotHeaders, got[1:len(got)-1])
+	copy(wantHeaders, want[1:len(want)-1])
+	sort.Strings(gotHeaders)
+	sort.Strings(wantHeaders)
+	return slices.Equal(gotHeaders, wantHeaders)
 }
 
 func TestStarRequest(t *testing.T) {

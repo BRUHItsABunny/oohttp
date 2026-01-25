@@ -677,23 +677,42 @@ func (r *Request) write(w io.Writer, usingProxy bool, extraHeaders Header, waitF
 	}
 
 	// Header lines
-	if _, ok := r.Header["Host"]; !ok {
-		if _, ok := r.Header["host"]; !ok {
-			r.Header.Set("Host", host)
-			if trace != nil && trace.WroteHeaderField != nil {
-				trace.WroteHeaderField("Host", []string{host})
-			}
-		}
+	// Set Host header. The computed host value from r.Host or r.URL.Host
+	// should override any value in the Header map (Go 1.0 behavior).
+	if r.Header == nil {
+		r.Header = make(Header)
+	}
+	r.Header.Set("Host", host)
+	if trace != nil && trace.WroteHeaderField != nil {
+		trace.WroteHeaderField("Host", []string{host})
 	}
 
 	// Use the defaultUserAgent unless the Header contains one, which
 	// may be blank to not send the header.
-	if _, ok := r.Header["User-Agent"]; !ok {
-		if _, ok := r.Header["user-agent"]; !ok {
-			r.Header.Set("User-Agent", defaultUserAgent)
-			if trace != nil && trace.WroteHeaderField != nil {
-				trace.WroteHeaderField("User-Agent", []string{defaultUserAgent})
-			}
+	// Per RFC 7231, only one User-Agent header should be sent.
+	// If User-Agent is set to empty string, don't send the header at all.
+	if ua, ok := r.Header["User-Agent"]; ok {
+		if len(ua) > 0 && ua[0] != "" {
+			// Normalize to single value (first one only)
+			userAgent := headerNewlineToSpace.Replace(ua[0])
+			userAgent = textproto.TrimString(userAgent)
+			r.Header["User-Agent"] = []string{userAgent}
+		} else {
+			// Empty string means don't send User-Agent header
+			delete(r.Header, "User-Agent")
+		}
+	} else if ua, ok := r.Header["user-agent"]; ok {
+		if len(ua) > 0 && ua[0] != "" {
+			userAgent := headerNewlineToSpace.Replace(ua[0])
+			userAgent = textproto.TrimString(userAgent)
+			r.Header["user-agent"] = []string{userAgent}
+		} else {
+			delete(r.Header, "user-agent")
+		}
+	} else {
+		r.Header.Set("User-Agent", defaultUserAgent)
+		if trace != nil && trace.WroteHeaderField != nil {
+			trace.WroteHeaderField("User-Agent", []string{defaultUserAgent})
 		}
 	}
 
@@ -707,16 +726,18 @@ func (r *Request) write(w io.Writer, usingProxy bool, extraHeaders Header, waitF
 		return err
 	}
 
-	// Make sure can be ordered too Accept-Encoding, Connection
-	if extraHeaders != nil {
-		for key, values := range extraHeaders {
-			r.Header[key] = values
-		}
-	}
-
 	err = r.Header.write(w, trace)
 	if err != nil {
 		return err
+	}
+
+	// Write extra headers (e.g., Accept-Encoding added by transport)
+	// without modifying the original request headers
+	if extraHeaders != nil {
+		err = extraHeaders.write(w, trace)
+		if err != nil {
+			return err
+		}
 	}
 
 	_, err = io.WriteString(w, "\r\n")

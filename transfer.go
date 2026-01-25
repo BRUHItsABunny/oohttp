@@ -14,6 +14,7 @@ import (
 	"net/textproto"
 	"reflect"
 	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -275,28 +276,27 @@ func (t *transferWriter) shouldSendContentLength() bool {
 	return false
 }
 
-// addHeaders adds transfer headers to an existing header object
+// addHeaders adds transfer headers to an existing header object.
+// Note: This function only adds headers to the map. The trace.WroteHeaderField
+// callback will be called later when the headers are actually written in
+// Header.writeSubset, so we don't call it here to avoid duplicates.
 func (t *transferWriter) addHeaders(hdrs *Header, trace *httptrace.ClientTrace) error {
 	if t.Close && !hasToken(t.Header.get("Connection"), "close") {
 		hdrs.Add("Connection", "close")
-		if trace != nil && trace.WroteHeaderField != nil {
-			trace.WroteHeaderField("Connection", []string{"close"})
-		}
 	}
 
 	// Write Content-Length and/or Transfer-Encoding whose Values are a
 	// function of the sanitized field triple (Body, ContentLength,
 	// TransferEncoding)
+	// First, delete any existing Content-Length or Transfer-Encoding headers
+	// since these are computed from the request fields and should override
+	// any values in the Header map.
+	hdrs.Del("Content-Length")
+	hdrs.Del("Transfer-Encoding")
 	if t.shouldSendContentLength() {
 		hdrs.Add("Content-Length", strconv.FormatInt(t.ContentLength, 10))
-		if trace != nil && trace.WroteHeaderField != nil {
-			trace.WroteHeaderField("Content-Length", []string{strconv.FormatInt(t.ContentLength, 10)})
-		}
 	} else if chunked(t.TransferEncoding) {
 		hdrs.Add("Transfer-Encoding", "chunked")
-		if trace != nil && trace.WroteHeaderField != nil {
-			trace.WroteHeaderField("Transfer-Encoding", []string{"chunked"})
-		}
 	}
 
 	// Write Trailer header
@@ -315,9 +315,6 @@ func (t *transferWriter) addHeaders(hdrs *Header, trace *httptrace.ClientTrace) 
 			// TODO: could do better allocation-wise here, but trailers are rare,
 			// so being lazy for now.
 			hdrs.Add("Trailer", strings.Join(keys, ","))
-			if trace != nil && trace.WroteHeaderField != nil {
-				trace.WroteHeaderField("Trailer", keys)
-			}
 		}
 	}
 

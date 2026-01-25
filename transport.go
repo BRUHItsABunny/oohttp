@@ -31,9 +31,13 @@ import (
 	_ "unsafe"
 
 	httptrace "github.com/ooni/oohttp/httptrace"
+	"github.com/ooni/oohttp/internal/godebug"
+	"github.com/ooni/oohttp/internal/nettrace"
 	"golang.org/x/net/http/httpguts"
 	"golang.org/x/net/http/httpproxy"
 )
+
+var http2client = godebug.New("http2client")
 
 // DefaultTransport is the default implementation of [Transport] and is
 // used by [DefaultClient]. It establishes network connections as needed
@@ -366,31 +370,39 @@ func (t *Transport) readBufferSize() int {
 func (t *Transport) Clone() *Transport {
 	t.nextProtoOnce.Do(t.onceSetNextProtoDefaults)
 	t2 := &Transport{
-		Proxy:                    t.Proxy,
-		OnProxyConnectResponse:   t.OnProxyConnectResponse,
-		DialContext:              t.DialContext,
-		Dial:                     t.Dial,
-		DialTLS:                  t.DialTLS,
-		DialTLSContext:           t.DialTLSContext,
-		TLSHandshakeTimeout:      t.TLSHandshakeTimeout,
-		DisableKeepAlives:        t.DisableKeepAlives,
-		DisableCompression:       t.DisableCompression,
-		MaxIdleConns:             t.MaxIdleConns,
-		MaxIdleConnsPerHost:      t.MaxIdleConnsPerHost,
-		MaxConnsPerHost:          t.MaxConnsPerHost,
-		IdleConnTimeout:          t.IdleConnTimeout,
-		ResponseHeaderTimeout:    t.ResponseHeaderTimeout,
-		ExpectContinueTimeout:    t.ExpectContinueTimeout,
-		ProxyConnectHeader:       t.ProxyConnectHeader.Clone(),
-		GetProxyConnectHeader:    t.GetProxyConnectHeader,
-		MaxResponseHeaderBytes:   t.MaxResponseHeaderBytes,
-		ForceAttemptHTTP2:        t.ForceAttemptHTTP2,
-		WriteBufferSize:          t.WriteBufferSize,
-		ReadBufferSize:           t.ReadBufferSize,
-		TLSClientFactory:         t.TLSClientFactory,
-		HasCustomInitialSettings: t.HasCustomInitialSettings,
-		HasCustomWindowUpdate:    t.HasCustomWindowUpdate,
-		WindowUpdateIncrement:    t.WindowUpdateIncrement,
+		Proxy:                        t.Proxy,
+		OnProxyConnectResponse:       t.OnProxyConnectResponse,
+		DialContext:                  t.DialContext,
+		Dial:                         t.Dial,
+		DialTLS:                      t.DialTLS,
+		DialTLSContext:               t.DialTLSContext,
+		TLSHandshakeTimeout:          t.TLSHandshakeTimeout,
+		DisableKeepAlives:            t.DisableKeepAlives,
+		DisableCompression:           t.DisableCompression,
+		MaxIdleConns:                 t.MaxIdleConns,
+		MaxIdleConnsPerHost:          t.MaxIdleConnsPerHost,
+		MaxConnsPerHost:              t.MaxConnsPerHost,
+		IdleConnTimeout:              t.IdleConnTimeout,
+		ResponseHeaderTimeout:        t.ResponseHeaderTimeout,
+		ExpectContinueTimeout:        t.ExpectContinueTimeout,
+		ProxyConnectHeader:           t.ProxyConnectHeader.Clone(),
+		GetProxyConnectHeader:        t.GetProxyConnectHeader,
+		MaxResponseHeaderBytes:       t.MaxResponseHeaderBytes,
+		ForceAttemptHTTP2:            t.ForceAttemptHTTP2,
+		WriteBufferSize:              t.WriteBufferSize,
+		ReadBufferSize:               t.ReadBufferSize,
+		TLSClientFactory:             t.TLSClientFactory,
+		HasCustomInitialSettings:     t.HasCustomInitialSettings,
+		HasCustomWindowUpdate:        t.HasCustomWindowUpdate,
+		WindowUpdateIncrement:        t.WindowUpdateIncrement,
+		CompressionRegistry:          t.CompressionRegistry,
+		DecompressionRegistry:        t.DecompressionRegistry,
+		HTTP2SettingsFrameParameters: t.HTTP2SettingsFrameParameters,
+		PostHandshakeCallback:        t.PostHandshakeCallback,
+	}
+	if t.HTTP2PriorityFrameSettings != nil {
+		t2.HTTP2PriorityFrameSettings = &HTTP2PriorityFrameSettings{}
+		*t2.HTTP2PriorityFrameSettings = *t.HTTP2PriorityFrameSettings
 	}
 	if t.TLSClientConfig != nil {
 		t2.TLSClientConfig = t.TLSClientConfig.Clone()
@@ -453,6 +465,11 @@ func (t *Transport) onceSetNextProtoDefaults() {
 	}
 	protocols := t.protocols()
 	if !protocols.HTTP2() && !protocols.UnencryptedHTTP2() {
+		return
+	}
+	// If GODEBUG=http2client=0, then HTTP/2 is disabled.
+	if http2client.Value() == "0" {
+		http2client.IncNonDefault()
 		return
 	}
 	if omitBundledHTTP2 {
@@ -1327,6 +1344,33 @@ func (t *Transport) dial(ctx context.Context, network, addr string) (net.Conn, e
 			err = errors.New("net/http: Transport.Dial hook returned (nil, nil)")
 		}
 		return c, err
+	}
+	// NOTE: code specific to github.com/ooni/oohttp
+	// Check for alternate DNS resolver in context. This allows tests (and users)
+	// to provide custom DNS resolution without modifying the net package.
+	if altResolver, ok := ctx.Value(nettrace.LookupIPAltResolverKey{}).(func(ctx context.Context, network, host string) ([]net.IPAddr, error)); ok {
+		host, port, err := net.SplitHostPort(addr)
+		if err != nil {
+			return nil, err
+		}
+		addrs, err := altResolver(ctx, network, host)
+		if err != nil {
+			return nil, err
+		}
+		if len(addrs) == 0 {
+			return nil, &net.DNSError{Err: "no addresses found", Name: host}
+		}
+		// Try each resolved address until one works
+		var lastErr error
+		for _, ipAddr := range addrs {
+			dialAddr := net.JoinHostPort(ipAddr.IP.String(), port)
+			c, err := zeroDialer.DialContext(ctx, network, dialAddr)
+			if err == nil {
+				return c, nil
+			}
+			lastErr = err
+		}
+		return nil, lastErr
 	}
 	return zeroDialer.DialContext(ctx, network, addr)
 }
@@ -2437,19 +2481,39 @@ func (pc *persistConn) readLoop() {
 
 		resp.Body = body
 
-		//if rc.addedGzip && ascii.EqualFold(resp.Header.Get("Content-Encoding"), "gzip") {
-		// fmt.Println("Check decompression", rc.addedGzip)
-		if rc.addedGzip {
-			resp.Body = &DecompressorReader{
-				Reader:   resp.Body,
-				Registry: pc.t.DecompressionRegistry,
-				Order:    strings.Split(resp.Header.Get("Content-Encoding"), ","),
+		// Only apply decompression if the transport added Accept-Encoding AND
+		// the response has a Content-Encoding header indicating compression AND
+		// all encodings are supported by the registry.
+		contentEncoding := resp.Header.Get("Content-Encoding")
+		if rc.addedGzip && contentEncoding != "" && contentEncoding != "identity" {
+			// Check if all encodings in the Content-Encoding header are supported
+			registry := pc.t.DecompressionRegistry
+			if registry == nil {
+				registry = DefaultDecompressionRegistry
 			}
-			// resp.Body = &gzipReader{body: body}
-			resp.Header.Del("Content-Encoding")
-			resp.Header.Del("Content-Length")
-			resp.ContentLength = -1
-			resp.Uncompressed = true
+			encodings := strings.Split(contentEncoding, ",")
+			allSupported := true
+			for _, enc := range encodings {
+				enc = strings.TrimSpace(strings.ToLower(enc))
+				if enc == "" {
+					continue
+				}
+				if _, ok := registry[enc]; !ok {
+					allSupported = false
+					break
+				}
+			}
+			if allSupported {
+				resp.Body = &DecompressorReader{
+					Reader:   resp.Body,
+					Registry: registry,
+					Order:    encodings,
+				}
+				resp.Header.Del("Content-Encoding")
+				resp.Header.Del("Content-Length")
+				resp.ContentLength = -1
+				resp.Uncompressed = true
+			}
 		}
 
 		select {
@@ -2546,7 +2610,15 @@ func (pc *persistConn) readResponse(rc requestAndChan, trace *httptrace.ClientTr
 		is1xxNonTerminal := is1xx && resCode != StatusSwitchingProtocols
 		if is1xxNonTerminal {
 			if trace != nil && trace.Got1xxResponse != nil {
-				if err := trace.Got1xxResponse(resCode, textproto.MIMEHeader(resp.Header)); err != nil {
+				// Filter out Header-Order keys before passing to trace callback
+				traceHeader := make(textproto.MIMEHeader, len(resp.Header))
+				for k, v := range resp.Header {
+					if k == HeaderOrderKey || k == PHeaderOrderKey {
+						continue
+					}
+					traceHeader[k] = v
+				}
+				if err := trace.Got1xxResponse(resCode, traceHeader); err != nil {
 					return nil, err
 				}
 				// If the 1xx response was delivered to the user,
@@ -2828,7 +2900,6 @@ func (pc *persistConn) roundTrip(req *transportRequest) (resp *Response, err err
 	// own value for Accept-Encoding. We only attempt to
 	// uncompress the gzip stream if we were the layer that
 	// requested it.
-	// Amendment: We are supporting encoding based on the header present in the request now, not just if the transport decided.
 	requestedGzip := false
 	if !pc.t.DisableCompression &&
 		req.Header.Get("Range") == "" &&
@@ -2846,14 +2917,12 @@ func (pc *persistConn) roundTrip(req *transportRequest) (resp *Response, err err
 		// auto-decoding a portion of a gzipped document will just fail
 		// anyway. See https://golang.org/issue/8923
 
-		// Default std lib behavior is to default to gzip
+		// Only add Accept-Encoding and request auto-decompression if
+		// the caller didn't set their own value
 		if req.Header.Get("Accept-Encoding") == "" {
-			req.Header.Set("Accept-Encoding", "gzip")
+			req.extraHeaders().Set("Accept-Encoding", "gzip")
+			requestedGzip = true
 		}
-
-		requestedGzip = true
-		req.extraHeaders().Set("Accept-Encoding", req.Header.Get("Accept-Encoding"))
-		req.Header.Del("Accept-Encoding") // dedup
 	}
 
 	var continueCh chan struct{}

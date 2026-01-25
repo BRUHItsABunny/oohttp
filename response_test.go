@@ -884,10 +884,37 @@ func diff(t *testing.T, prefix string, have, want any) {
 		}
 		hf := hv.Field(i).Interface()
 		wf := wv.Field(i).Interface()
+		// Special handling for Header fields: exclude oohttp-specific keys
+		// (Header-Order: and PHeader-Order:) from comparison since upstream
+		// tests don't expect them.
+		if name == "Header" {
+			if hh, ok := hf.(Header); ok {
+				if wh, ok := wf.(Header); ok {
+					hf = copyHeaderWithoutOrderKeys(hh)
+					wf = copyHeaderWithoutOrderKeys(wh)
+				}
+			}
+		}
 		if !reflect.DeepEqual(hf, wf) {
 			t.Errorf("%s: %s = %v want %v", prefix, name, hf, wf)
 		}
 	}
+}
+
+// copyHeaderWithoutOrderKeys returns a copy of the header without the
+// Header-Order: and PHeader-Order: keys that are specific to the oohttp fork.
+func copyHeaderWithoutOrderKeys(h Header) Header {
+	if h == nil {
+		return nil
+	}
+	result := make(Header, len(h))
+	for k, v := range h {
+		if k == HeaderOrderKey || k == PHeaderOrderKey {
+			continue
+		}
+		result[k] = v
+	}
+	return result
 }
 
 type responseLocationTest struct {

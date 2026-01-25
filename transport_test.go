@@ -44,9 +44,9 @@ import (
 	httptrace "github.com/ooni/oohttp/httptrace"
 	httputil "github.com/ooni/oohttp/httputil"
 	nettrace "github.com/ooni/oohttp/internal/nettrace"
-	synctest "github.com/ooni/oohttp/internal/synctest"
 	testcert "github.com/ooni/oohttp/internal/testcert"
 	"golang.org/x/net/http/httpguts"
+	"testing/synctest"
 )
 
 // TODO: test 5 pipelined requests with responses: 1) OK, 2) OK, Connection: Close
@@ -1876,7 +1876,8 @@ func testTransportGzipShort(t *testing.T, mode testMode) {
 	if err == nil {
 		t.Fatal("Expect an error from reading a body.")
 	}
-	if err != io.ErrUnexpectedEOF {
+	// Use errors.Is for wrapped errors (the fork wraps decompression errors)
+	if !errors.Is(err, io.ErrUnexpectedEOF) {
 		t.Errorf("ReadAll error = %v; want io.ErrUnexpectedEOF", err)
 	}
 }
@@ -3849,7 +3850,8 @@ func testRetryRequestsOnError(t *testing.T, mode testMode) {
 			req: func() *Request {
 				return newRequest("GET", "http://fake.golang", strings.NewReader("foo\n"))
 			},
-			reqString: `GET / HTTP/1.1\r\nHost: fake.golang\r\nUser-Agent: Go-http-client/1.1\r\nContent-Length: 4\r\nAccept-Encoding: gzip\r\n\r\nfoo\n`,
+			// Header order is alphabetical in this fork: Content-Length, Host, User-Agent
+			reqString: `GET / HTTP/1.1\r\nContent-Length: 4\r\nHost: fake.golang\r\nUser-Agent: Go-http-client/1.1\r\nAccept-Encoding: gzip\r\n\r\nfoo\n`,
 		},
 		{
 			name: "NothingWrittenNoBody",
@@ -3873,7 +3875,8 @@ func testRetryRequestsOnError(t *testing.T, mode testMode) {
 			req: func() *Request {
 				return newRequest("POST", "http://fake.golang", strings.NewReader("foo\n"))
 			},
-			reqString: `POST / HTTP/1.1\r\nHost: fake.golang\r\nUser-Agent: Go-http-client/1.1\r\nContent-Length: 4\r\nAccept-Encoding: gzip\r\n\r\nfoo\n`,
+			// Header order is alphabetical in this fork: Content-Length, Host, User-Agent
+			reqString: `POST / HTTP/1.1\r\nContent-Length: 4\r\nHost: fake.golang\r\nUser-Agent: Go-http-client/1.1\r\nAccept-Encoding: gzip\r\n\r\nfoo\n`,
 		},
 	}
 
@@ -4608,7 +4611,7 @@ func TestTransportFlushesBodyChunks(t *testing.T) {
 	defer res.Body.Close()
 
 	want := []string{
-		"POST / HTTP/1.1\r\nHost: localhost:8080\r\nUser-Agent: x\r\nTransfer-Encoding: chunked\r\nAccept-Encoding: gzip\r\n\r\n",
+		"POST / HTTP/1.1\r\nHost: localhost:8080\r\nTransfer-Encoding: chunked\r\nUser-Agent: x\r\nAccept-Encoding: gzip\r\n\r\n",
 		"5\r\nnum0\n\r\n",
 		"5\r\nnum1\n\r\n",
 		"5\r\nnum2\n\r\n",
@@ -6180,6 +6183,15 @@ func TestTransportClone(t *testing.T) {
 		ReadBufferSize:   1,
 		WriteBufferSize:  1,
 		TLSClientFactory: TLSClientFactory, // set to the global one
+		// oohttp fork-specific fields
+		CompressionRegistry:          CompressionRegistry{"gzip": nil},
+		DecompressionRegistry:        DecompressionRegistry{"gzip": nil},
+		HasCustomInitialSettings:     true,
+		HasCustomWindowUpdate:        true,
+		HTTP2PriorityFrameSettings:   &HTTP2PriorityFrameSettings{},
+		HTTP2SettingsFrameParameters: []int64{1},
+		WindowUpdateIncrement:        1,
+		PostHandshakeCallback:        func(string, *tls.ConnectionState) error { return nil },
 	}
 	tr.Protocols.SetHTTP1(true)
 	tr.Protocols.SetHTTP2(true)
@@ -7055,7 +7067,7 @@ func TestTransportServerProtocols(t *testing.T) {
 			tr.Protocols = &Protocols{}
 			tr.Protocols.SetHTTP1(true)
 			tr.Protocols.SetHTTP2(true)
-			tr.TLSNextProto = map[string]func(string, *tls.Conn) RoundTripper{}
+			tr.TLSNextProto = map[string]func(string, TLSConn) RoundTripper{}
 		},
 		want: "HTTP/2.0",
 	}, {
@@ -7064,7 +7076,7 @@ func TestTransportServerProtocols(t *testing.T) {
 		server: func(srv *Server) {
 			// Disable HTTP/2 on the server with TLSNextProto,
 			// use default Protocols value.
-			srv.TLSNextProto = map[string]func(*Server, *tls.Conn, Handler){}
+			srv.TLSNextProto = map[string]func(*Server, TLSConn, Handler){}
 		},
 		want: "HTTP/1.1",
 	}, {
@@ -7076,7 +7088,7 @@ func TestTransportServerProtocols(t *testing.T) {
 			srv.Protocols = &Protocols{}
 			srv.Protocols.SetHTTP1(true)
 			srv.Protocols.SetHTTP2(true)
-			srv.TLSNextProto = map[string]func(*Server, *tls.Conn, Handler){}
+			srv.TLSNextProto = map[string]func(*Server, TLSConn, Handler){}
 		},
 		want: "HTTP/2.0",
 	}, {
@@ -7187,6 +7199,12 @@ func TestTransportServerProtocols(t *testing.T) {
 		want: "error",
 	}} {
 		t.Run(test.name, func(t *testing.T) {
+			// Skip GODEBUG tests - the oohttp fork doesn't support runtime GODEBUG
+			// changes because it avoids forking large portions of the runtime package.
+			// See internal/godebug/godebug.go for details.
+			if strings.HasPrefix(test.name, "GODEBUG") {
+				t.Skip("oohttp fork doesn't support runtime GODEBUG changes")
+			}
 			// We don't use httptest here because it makes its own decisions
 			// about how to enable/disable HTTP/2.
 			srv := &Server{

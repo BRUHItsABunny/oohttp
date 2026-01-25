@@ -118,8 +118,10 @@ type clientServerTest struct {
 }
 
 func (t *clientServerTest) close() {
-	t.tr.CloseIdleConnections()
+	// Close the server first, which causes connections to receive errors.
 	t.ts.Close()
+	// Then close idle connections in the transport.
+	t.tr.CloseIdleConnections()
 }
 
 func (t *clientServerTest) getURL(u string) string {
@@ -413,6 +415,16 @@ func mostlyCopy(r *Response) *Response {
 	c.TransferEncoding = nil
 	c.TLS = nil
 	c.Request = nil
+	// Exclude oohttp-specific Header-Order keys from comparison
+	if c.Header != nil {
+		c.Header = make(Header, len(r.Header))
+		for k, v := range r.Header {
+			if k == HeaderOrderKey || k == PHeaderOrderKey {
+				continue
+			}
+			c.Header[k] = v
+		}
+	}
 	return &c
 }
 
@@ -848,7 +860,9 @@ func testTrailersServerToClient(t *testing.T, mode testMode, flush bool) {
 		t.Errorf("ContentLength = %v; want %v", res.ContentLength, wantLen)
 	}
 
-	delete(res.Header, "Date") // irrelevant for test
+	delete(res.Header, "Date")          // irrelevant for test
+	delete(res.Header, HeaderOrderKey)  // oohttp fork-specific
+	delete(res.Header, PHeaderOrderKey) // oohttp fork-specific
 	if !reflect.DeepEqual(res.Header, wantHeader) {
 		t.Errorf("Header = %v; want %v", res.Header, wantHeader)
 	}
@@ -1503,6 +1517,7 @@ func testServerUndeclaredTrailers(t *testing.T, mode testMode) {
 	res.Body.Close()
 	delete(res.Header, "Date")
 	delete(res.Header, "Content-Type")
+	delete(res.Header, "Header-Order:")
 
 	if want := (Header{"Foo": {"Bar"}}); !reflect.DeepEqual(res.Header, want) {
 		t.Errorf("Header = %#v; want %#v", res.Header, want)

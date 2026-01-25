@@ -1267,14 +1267,14 @@ func testFileServerErrorMessages(t *testing.T, mode testMode, keepHeaders bool) 
 		},
 	}
 	server := FileServer(fs)
-	h := func(w http.ResponseWriter, r *http.Request) {
+	h := func(w ResponseWriter, r *Request) {
 		w.Header().Set("Etag", "étude")
 		w.Header().Set("Cache-Control", "yes")
 		w.Header().Set("Content-Type", "awesome")
 		w.Header().Set("Last-Modified", "yesterday")
 		server.ServeHTTP(w, r)
 	}
-	ts := newClientServerTest(t, mode, http.HandlerFunc(h)).ts
+	ts := newClientServerTest(t, mode, HandlerFunc(h)).ts
 	c := ts.Client()
 	for _, code := range []int{403, 404, 500} {
 		res, err := c.Get(fmt.Sprintf("%s/%d", ts.URL, code))
