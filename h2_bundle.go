@@ -51,8 +51,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	httptrace "github.com/ooni/oohttp/httptrace"
-	httpcommon "github.com/ooni/oohttp/internal/httpcommon"
+	httptrace "github.com/BRUHItsABunny/oohttp/httptrace"
+	httpcommon "github.com/BRUHItsABunny/oohttp/internal/httpcommon"
 	"golang.org/x/net/http/httpguts"
 	"golang.org/x/net/http2/hpack"
 	"golang.org/x/net/idna"

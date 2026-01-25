@@ -14,8 +14,8 @@ import (
 	"strings"
 	"time"
 
-	ascii "github.com/ooni/oohttp/internal/ascii"
-	"github.com/ooni/oohttp/internal/godebug"
+	ascii "github.com/BRUHItsABunny/oohttp/internal/ascii"
+	"github.com/BRUHItsABunny/oohttp/internal/godebug"
 )
 
 var httpcookiemaxnum = godebug.New("httpcookiemaxnum")

@@ -30,9 +30,9 @@ import (
 	"time"
 	_ "unsafe"
 
-	httptrace "github.com/ooni/oohttp/httptrace"
-	"github.com/ooni/oohttp/internal/godebug"
-	"github.com/ooni/oohttp/internal/nettrace"
+	httptrace "github.com/BRUHItsABunny/oohttp/httptrace"
+	"github.com/BRUHItsABunny/oohttp/internal/godebug"
+	"github.com/BRUHItsABunny/oohttp/internal/nettrace"
 	"golang.org/x/net/http/httpguts"
 	"golang.org/x/net/http/httpproxy"
 )
@@ -1353,7 +1353,7 @@ func (t *Transport) dial(ctx context.Context, network, addr string) (net.Conn, e
 		}
 		return c, err
 	}
-	// NOTE: code specific to github.com/ooni/oohttp
+	// NOTE: code specific to github.com/BRUHItsABunny/oohttp
 	// Check for alternate DNS resolver in context. This allows tests (and users)
 	// to provide custom DNS resolution without modifying the net package.
 	if altResolver, ok := ctx.Value(nettrace.LookupIPAltResolverKey{}).(func(ctx context.Context, network, host string) ([]net.IPAddr, error)); ok {

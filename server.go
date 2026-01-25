@@ -33,7 +33,7 @@ import (
 
 	"golang.org/x/net/http/httpguts"
 
-	"github.com/ooni/oohttp/internal/godebug"
+	"github.com/BRUHItsABunny/oohttp/internal/godebug"
 )
 
 var http2server = godebug.New("http2server")

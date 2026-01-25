@@ -20,9 +20,9 @@ import (
 	"sync"
 	"time"
 
-	http "github.com/ooni/oohttp"
-	httptrace "github.com/ooni/oohttp/httptrace"
-	ascii "github.com/ooni/oohttp/internal/ascii"
+	http "github.com/BRUHItsABunny/oohttp"
+	httptrace "github.com/BRUHItsABunny/oohttp/httptrace"
+	ascii "github.com/BRUHItsABunny/oohttp/internal/ascii"
 	"golang.org/x/net/http/httpguts"
 )
 

@@ -18,7 +18,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ooni/oohttp/internal"
+	"github.com/BRUHItsABunny/oohttp/internal"
 )
 
 type respTest struct {

@@ -16,8 +16,8 @@ import (
 	"sync"
 	"time"
 
-	http "github.com/ooni/oohttp"
-	ascii "github.com/ooni/oohttp/internal/ascii"
+	http "github.com/BRUHItsABunny/oohttp"
+	ascii "github.com/BRUHItsABunny/oohttp/internal/ascii"
 )
 
 // PublicSuffixList provides the public suffix of a domain. For example:

@@ -20,9 +20,9 @@ import (
 	"testing"
 	"time"
 
-	http "github.com/ooni/oohttp"
-	httptest "github.com/ooni/oohttp/httptest"
-	testenv "github.com/ooni/oohttp/internal/testenv"
+	http "github.com/BRUHItsABunny/oohttp"
+	httptest "github.com/BRUHItsABunny/oohttp/httptest"
+	testenv "github.com/BRUHItsABunny/oohttp/internal/testenv"
 )
 
 // TestMain executes the test binary as the cgi server if

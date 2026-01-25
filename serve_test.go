@@ -36,14 +36,15 @@ import (
 	"testing"
 	"time"
 
-	. "github.com/ooni/oohttp"
-	httptest "github.com/ooni/oohttp/httptest"
-	httptrace "github.com/ooni/oohttp/httptrace"
-	httputil "github.com/ooni/oohttp/httputil"
-	internal "github.com/ooni/oohttp/internal"
-	testcert "github.com/ooni/oohttp/internal/testcert"
-	testenv "github.com/ooni/oohttp/internal/testenv"
 	"testing/synctest"
+
+	. "github.com/BRUHItsABunny/oohttp"
+	httptest "github.com/BRUHItsABunny/oohttp/httptest"
+	httptrace "github.com/BRUHItsABunny/oohttp/httptrace"
+	httputil "github.com/BRUHItsABunny/oohttp/httputil"
+	internal "github.com/BRUHItsABunny/oohttp/internal"
+	testcert "github.com/BRUHItsABunny/oohttp/internal/testcert"
+	testenv "github.com/BRUHItsABunny/oohttp/internal/testenv"
 )
 
 type dummyAddr string
@@ -2117,7 +2118,7 @@ func TestServerUnreadRequestBodyLittle(t *testing.T) {
 // should ignore client request bodies that a handler didn't read
 // and close the connection.
 func TestServerUnreadRequestBodyLarge(t *testing.T) {
-	t.Skip("test disabled in the github.com/ooni/oohttp fork")
+	t.Skip("test disabled in the github.com/BRUHItsABunny/oohttp fork")
 	setParallel(t)
 	if testing.Short() && testenv.Builder() == "" {
 		t.Log("skipping in short mode")
@@ -2252,7 +2253,7 @@ var handlerBodyCloseTests = [...]handlerBodyCloseTest{
 }
 
 func TestHandlerBodyClose(t *testing.T) {
-	t.Skip("test disabled in the github.com/ooni/oohttp fork")
+	t.Skip("test disabled in the github.com/BRUHItsABunny/oohttp fork")
 	setParallel(t)
 	if testing.Short() && testenv.Builder() == "" {
 		t.Skip("skipping in -short mode")
@@ -6711,7 +6712,7 @@ func testTimeoutHandlerSuperfluousLogs(t *testing.T, mode testMode) {
 			// Now ensure that the regexes match exactly.
 			//      "http: superfluous response.WriteHeader call from <fn>.func\d.\d (<curFile>:lastSpuriousLine-[1, 3]"
 			for _, logEntry := range logEntries {
-				pat := `^http: superfluous response.WriteHeader call from github.com/ooni/oohttp.relevantCaller \(server.go:`
+				pat := `^http: superfluous response.WriteHeader call from github.com/BRUHItsABunny/oohttp.relevantCaller \(server.go:`
 				re := regexp.MustCompile(pat)
 				if !re.MatchString(logEntry) {
 					t.Errorf("Log entry mismatch\n\t%s\ndoes not match\n\t%s", logEntry, pat)

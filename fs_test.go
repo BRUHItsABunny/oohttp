@@ -29,9 +29,9 @@ import (
 	"testing/fstest"
 	"time"
 
-	. "github.com/ooni/oohttp"
-	httptest "github.com/ooni/oohttp/httptest"
-	testenv "github.com/ooni/oohttp/internal/testenv"
+	. "github.com/BRUHItsABunny/oohttp"
+	httptest "github.com/BRUHItsABunny/oohttp/httptest"
+	testenv "github.com/BRUHItsABunny/oohttp/internal/testenv"
 )
 
 const (

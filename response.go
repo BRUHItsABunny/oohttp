@@ -12,11 +12,12 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
-	"github.com/ooni/oohttp/textproto"
 	"io"
 	"net/url"
 	"strconv"
 	"strings"
+
+	"github.com/BRUHItsABunny/oohttp/textproto"
 
 	"golang.org/x/net/http/httpguts"
 )

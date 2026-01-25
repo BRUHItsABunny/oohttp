@@ -18,8 +18,8 @@ import (
 	"sync"
 	"time"
 
-	http "github.com/ooni/oohttp"
-	testcert "github.com/ooni/oohttp/internal/testcert"
+	http "github.com/BRUHItsABunny/oohttp"
+	testcert "github.com/BRUHItsABunny/oohttp/internal/testcert"
 )
 
 // A Server is an HTTP server listening on a system-chosen port on the

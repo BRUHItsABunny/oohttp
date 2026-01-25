@@ -20,7 +20,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/ooni/oohttp/internal/godebug"
+	"github.com/BRUHItsABunny/oohttp/internal/godebug"
 )
 
 var httpmuxgo121 = godebug.New("httpmuxgo121")

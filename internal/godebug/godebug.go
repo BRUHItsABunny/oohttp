@@ -41,8 +41,8 @@ import (
 	"unsafe"
 	_ "unsafe" // go:linkname
 
-	"github.com/ooni/oohttp/internal/bisect"
-	"github.com/ooni/oohttp/internal/godebugs"
+	"github.com/BRUHItsABunny/oohttp/internal/bisect"
+	"github.com/BRUHItsABunny/oohttp/internal/godebugs"
 )
 
 // A Setting is a single setting in the $GODEBUG environment variable.
@@ -132,7 +132,7 @@ var empty value
 
 // Value returns the current value for the GODEBUG setting s.
 //
-// NOTE: code specific to github.com/ooni/oohttp
+// NOTE: code specific to github.com/BRUHItsABunny/oohttp
 // Unlike the standard library, we read from os.Getenv directly each time
 // to support tests that use t.Setenv to change GODEBUG mid-test.
 // This is slightly less efficient but necessary since we don't hook into
@@ -213,7 +213,7 @@ func setUpdate(update func(string, string)) {
 // godebugNotify mimics runtime.godebugNotify
 func godebugNotify(envChanged bool) {
 	update := godebugUpdate.Load()
-	// NOTE: code specific to github.com/ooni/oohttp
+	// NOTE: code specific to github.com/BRUHItsABunny/oohttp
 	// Read GODEBUG directly from the environment instead of relying on
 	// runtime's cached value, since we don't fork the runtime.
 	env := os.Getenv("GODEBUG")

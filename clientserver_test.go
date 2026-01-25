@@ -32,10 +32,10 @@ import (
 	"testing/synctest"
 	"time"
 
-	. "github.com/ooni/oohttp"
-	httptest "github.com/ooni/oohttp/httptest"
-	httptrace "github.com/ooni/oohttp/httptrace"
-	httputil "github.com/ooni/oohttp/httputil"
+	. "github.com/BRUHItsABunny/oohttp"
+	httptest "github.com/BRUHItsABunny/oohttp/httptest"
+	httptrace "github.com/BRUHItsABunny/oohttp/httptrace"
+	httputil "github.com/BRUHItsABunny/oohttp/httputil"
 )
 
 type testMode string
@@ -1637,9 +1637,9 @@ func testWriteHeaderAfterWrite(t *testing.T, mode testMode, hijack bool) {
 		return
 	}
 	gotLog := strings.TrimSpace(errorLog.String())
-	wantLog := "http: superfluous response.WriteHeader call from github.com/ooni/oohttp.relevantCaller (server.go:"
+	wantLog := "http: superfluous response.WriteHeader call from github.com/BRUHItsABunny/oohttp.relevantCaller (server.go:"
 	if hijack {
-		wantLog = "http: response.WriteHeader on hijacked connection from github.com/ooni/oohttp.relevantCaller (server.go:"
+		wantLog = "http: response.WriteHeader on hijacked connection from github.com/BRUHItsABunny/oohttp.relevantCaller (server.go:"
 	}
 	if !strings.HasPrefix(gotLog, wantLog) {
 		t.Errorf("stderr output = %q; want %q", gotLog, wantLog)

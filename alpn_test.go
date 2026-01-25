@@ -14,8 +14,8 @@ import (
 	"strings"
 	"testing"
 
-	. "github.com/ooni/oohttp"
-	httptest "github.com/ooni/oohttp/httptest"
+	. "github.com/BRUHItsABunny/oohttp"
+	httptest "github.com/BRUHItsABunny/oohttp/httptest"
 )
 
 func TestNextProtoUpgrade(t *testing.T) {

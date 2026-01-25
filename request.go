@@ -25,10 +25,10 @@ import (
 	"sync"
 	_ "unsafe" // for linkname
 
-	"github.com/ooni/oohttp/textproto"
+	"github.com/BRUHItsABunny/oohttp/textproto"
 
-	httptrace "github.com/ooni/oohttp/httptrace"
-	ascii "github.com/ooni/oohttp/internal/ascii"
+	httptrace "github.com/BRUHItsABunny/oohttp/httptrace"
+	ascii "github.com/BRUHItsABunny/oohttp/internal/ascii"
 	"golang.org/x/net/http/httpguts"
 	"golang.org/x/net/idna"
 )

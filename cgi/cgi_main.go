@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	http "github.com/ooni/oohttp"
+	http "github.com/BRUHItsABunny/oohttp"
 )
 
 func cgiMain() {

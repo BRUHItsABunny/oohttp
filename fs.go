@@ -23,7 +23,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ooni/oohttp/internal/godebug"
+	"github.com/BRUHItsABunny/oohttp/internal/godebug"
 )
 
 // A Dir implements [FileSystem] using the native file system restricted to a

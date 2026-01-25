@@ -10,8 +10,8 @@ import (
 	"net"
 	"testing"
 
-	. "github.com/ooni/oohttp"
-	httptrace "github.com/ooni/oohttp/httptrace"
+	. "github.com/BRUHItsABunny/oohttp"
+	httptrace "github.com/BRUHItsABunny/oohttp/httptrace"
 )
 
 func TestTransportPoolConnReusePriorConnection(t *testing.T) {

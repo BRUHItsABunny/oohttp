@@ -39,14 +39,15 @@ import (
 	"testing/iotest"
 	"time"
 
-	. "github.com/ooni/oohttp"
-	httptest "github.com/ooni/oohttp/httptest"
-	httptrace "github.com/ooni/oohttp/httptrace"
-	httputil "github.com/ooni/oohttp/httputil"
-	nettrace "github.com/ooni/oohttp/internal/nettrace"
-	testcert "github.com/ooni/oohttp/internal/testcert"
-	"golang.org/x/net/http/httpguts"
 	"testing/synctest"
+
+	. "github.com/BRUHItsABunny/oohttp"
+	httptest "github.com/BRUHItsABunny/oohttp/httptest"
+	httptrace "github.com/BRUHItsABunny/oohttp/httptrace"
+	httputil "github.com/BRUHItsABunny/oohttp/httputil"
+	nettrace "github.com/BRUHItsABunny/oohttp/internal/nettrace"
+	testcert "github.com/BRUHItsABunny/oohttp/internal/testcert"
+	"golang.org/x/net/http/httpguts"
 )
 
 // TODO: test 5 pipelined requests with responses: 1) OK, 2) OK, Connection: Close

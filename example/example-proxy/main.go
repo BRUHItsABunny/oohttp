@@ -11,8 +11,8 @@ import (
 	"net/url"
 
 	"github.com/armon/go-socks5"
-	oohttp "github.com/ooni/oohttp"
-	"github.com/ooni/oohttp/example/internal/utlsx"
+	oohttp "github.com/BRUHItsABunny/oohttp"
+	"github.com/BRUHItsABunny/oohttp/example/internal/utlsx"
 )
 
 // startProxyServer starts a SOCKS5 proxy server at the given endpoint.
