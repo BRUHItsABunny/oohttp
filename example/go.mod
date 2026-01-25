@@ -3,7 +3,7 @@ module github.com/BRUHItsABunny/oohttp/example
 go 1.25
 
 require (
-	github.com/BRUHItsABunny/oohttp v0.9.0
+	github.com/BRUHItsABunny/oohttp v0.9.1
 	github.com/armon/go-socks5 v0.0.0-20160902184237-e75332964ef5
 	github.com/dreadl0ck/ja3 v1.0.5
 	github.com/dreadl0ck/tlsx v1.0.1-google-gopacket
@@ -15,7 +15,6 @@ require (
 
 require (
 	github.com/andybalholm/brotli v1.2.0 // indirect
-	github.com/cloudflare/circl v1.5.0 // indirect
 	github.com/google/gopacket v1.1.19 // indirect
 	github.com/klauspost/compress v1.18.3 // indirect
 	golang.org/x/crypto v0.47.0 // indirect
