@@ -1,6 +1,6 @@
 module github.com/ooni/oohttp
 
-go 1.21
+go 1.25
 
 require (
 	github.com/andybalholm/brotli v1.1.1

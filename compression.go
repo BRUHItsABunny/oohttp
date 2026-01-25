@@ -221,9 +221,12 @@ type DecompressorReader struct {
 	Registry DecompressionRegistry
 	Order    []EncodingName
 
-	rds []io.Reader
+	rds        []io.Reader
+	bodyReader io.Reader // original underlying reader (e.g., bodyEOFSignal)
 
-	once sync.Once
+	once   sync.Once
+	mu     sync.Mutex
+	closed bool
 }
 
 var _ io.ReadCloser = (*DecompressorReader)(nil)
@@ -232,6 +235,7 @@ func (dr *DecompressorReader) init() error {
 	if dr.Registry == nil {
 		dr.Registry = DefaultDecompressionRegistry
 	}
+	dr.bodyReader = dr.Reader // save the original reader before wrapping
 	dr.rds = nil
 	for i := 0; i < len(dr.Order); i++ {
 		directive := dr.Order[i]
@@ -239,8 +243,9 @@ func (dr *DecompressorReader) init() error {
 		if directive == "" {
 			continue
 		}
-		// fmt.Println(directive)
-		decompressorWrapper, exist := dr.Registry[directive]
+		// Make lookup case-insensitive per RFC 9110 Section 8.4.1
+		directiveLower := strings.ToLower(directive)
+		decompressorWrapper, exist := dr.Registry[directiveLower]
 		if !exist {
 			return fmt.Errorf("%s is not supported", directive)
 		}
@@ -264,6 +269,13 @@ func (dr *DecompressorReader) Init() (err error) {
 
 // Read read buffer from decompressor
 func (dr *DecompressorReader) Read(b []byte) (nb int, err error) {
+	dr.mu.Lock()
+	if dr.closed {
+		dr.mu.Unlock()
+		return 0, errReadOnClosedResBody
+	}
+	dr.mu.Unlock()
+
 	dr.once.Do(func() {
 		err = dr.init()
 	})
@@ -274,14 +286,30 @@ func (dr *DecompressorReader) Read(b []byte) (nb int, err error) {
 	return
 }
 
-// Close close decompressor
+// Close close decompressor and underlying reader
 func (dr *DecompressorReader) Close() error {
+	dr.mu.Lock()
+	if dr.closed {
+		dr.mu.Unlock()
+		return nil
+	}
+	dr.closed = true
+	dr.mu.Unlock()
+
+	// Close decompressor readers in reverse order
 	for i := len(dr.rds) - 1; i >= 0; i-- {
 		if closer, ok := dr.rds[i].(io.Closer); ok {
 			err := closer.Close()
 			if err != nil {
 				return err
 			}
+		}
+	}
+	// Close the underlying reader (e.g., bodyEOFSignal) to signal
+	// the transport that we're done reading the body.
+	if dr.bodyReader != nil {
+		if closer, ok := dr.bodyReader.(io.Closer); ok {
+			return closer.Close()
 		}
 	}
 	return nil

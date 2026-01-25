@@ -10,10 +10,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/http/internal/ascii"
 	"strconv"
 	"strings"
 	"syscall/js"
+
+	ascii "github.com/ooni/oohttp/internal/ascii"
 )
 
 var uint8Array = js.Global().Get("Uint8Array")
@@ -236,6 +237,14 @@ func (t *Transport) RoundTrip(req *Request) (*Response, error) {
 		if !ac.IsUndefined() {
 			// Abort the Fetch request.
 			ac.Call("abort")
+
+			// Wait for fetch promise to be rejected prior to exiting. See
+			// https://github.com/golang/go/issues/57098 for more details.
+			select {
+			case resp := <-respCh:
+				resp.Body.Close()
+			case <-errCh:
+			}
 		}
 		return nil, req.Context().Err()
 	case resp := <-respCh:

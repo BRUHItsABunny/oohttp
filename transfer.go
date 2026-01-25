@@ -10,8 +10,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/textproto"
 	"reflect"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -274,28 +276,27 @@ func (t *transferWriter) shouldSendContentLength() bool {
 	return false
 }
 
-// addHeaders adds transfer headers to an existing header object
+// addHeaders adds transfer headers to an existing header object.
+// Note: This function only adds headers to the map. The trace.WroteHeaderField
+// callback will be called later when the headers are actually written in
+// Header.writeSubset, so we don't call it here to avoid duplicates.
 func (t *transferWriter) addHeaders(hdrs *Header, trace *httptrace.ClientTrace) error {
 	if t.Close && !hasToken(t.Header.get("Connection"), "close") {
 		hdrs.Add("Connection", "close")
-		if trace != nil && trace.WroteHeaderField != nil {
-			trace.WroteHeaderField("Connection", []string{"close"})
-		}
 	}
 
 	// Write Content-Length and/or Transfer-Encoding whose Values are a
 	// function of the sanitized field triple (Body, ContentLength,
 	// TransferEncoding)
+	// First, delete any existing Content-Length or Transfer-Encoding headers
+	// since these are computed from the request fields and should override
+	// any values in the Header map.
+	hdrs.Del("Content-Length")
+	hdrs.Del("Transfer-Encoding")
 	if t.shouldSendContentLength() {
 		hdrs.Add("Content-Length", strconv.FormatInt(t.ContentLength, 10))
-		if trace != nil && trace.WroteHeaderField != nil {
-			trace.WroteHeaderField("Content-Length", []string{strconv.FormatInt(t.ContentLength, 10)})
-		}
 	} else if chunked(t.TransferEncoding) {
 		hdrs.Add("Transfer-Encoding", "chunked")
-		if trace != nil && trace.WroteHeaderField != nil {
-			trace.WroteHeaderField("Transfer-Encoding", []string{"chunked"})
-		}
 	}
 
 	// Write Trailer header
@@ -314,9 +315,6 @@ func (t *transferWriter) addHeaders(hdrs *Header, trace *httptrace.ClientTrace) 
 			// TODO: could do better allocation-wise here, but trailers are rare,
 			// so being lazy for now.
 			hdrs.Add("Trailer", strings.Join(keys, ","))
-			if trace != nil && trace.WroteHeaderField != nil {
-				trace.WroteHeaderField("Trailer", keys)
-			}
 		}
 	}
 
@@ -367,7 +365,7 @@ func (t *transferWriter) writeHeader(w io.Writer, trace *httptrace.ClientTrace) 
 			keys = append(keys, k)
 		}
 		if len(keys) > 0 {
-			sort.Strings(keys)
+			slices.Sort(keys)
 			// TODO: could do better allocation-wise here, but trailers are rare,
 			// so being lazy for now.
 			if _, err := io.WriteString(w, "Trailer: "+strings.Join(keys, ",")+"\r\n"); err != nil {
@@ -399,7 +397,7 @@ func (t *transferWriter) writeBody(w io.Writer) (err error) {
 	// nopCloser or readTrackingBody. This is to ensure that we can take advantage of
 	// OS-level optimizations in the event that the body is an
 	// *os.File.
-	if t.Body != nil {
+	if !t.ResponseToHEAD && t.Body != nil {
 		var body = t.unwrapBody()
 		if chunked(t.TransferEncoding) {
 			if bw, ok := w.(*bufio.Writer); ok && !t.IsResponse {
@@ -441,7 +439,7 @@ func (t *transferWriter) writeBody(w io.Writer) (err error) {
 			t.ContentLength, ncopy)
 	}
 
-	if chunked(t.TransferEncoding) {
+	if !t.ResponseToHEAD && chunked(t.TransferEncoding) {
 		// Write Trailer header
 		if t.Trailer != nil {
 			if err := t.Trailer.Write(w); err != nil {
@@ -699,19 +697,6 @@ func (t *transferReader) parseTransferEncoding() error {
 		return &unsupportedTEError{fmt.Sprintf("unsupported transfer encoding: %q", raw[0])}
 	}
 
-	// RFC 7230 3.3.2 says "A sender MUST NOT send a Content-Length header field
-	// in any message that contains a Transfer-Encoding header field."
-	//
-	// but also: "If a message is received with both a Transfer-Encoding and a
-	// Content-Length header field, the Transfer-Encoding overrides the
-	// Content-Length. Such a message might indicate an attempt to perform
-	// request smuggling (Section 9.5) or response splitting (Section 9.4) and
-	// ought to be handled as an error. A sender MUST remove the received
-	// Content-Length field prior to forwarding such a message downstream."
-	//
-	// Reportedly, these appear in the wild.
-	delete(t.Header, "Content-Length")
-
 	t.Chunked = true
 	return nil
 }
@@ -719,7 +704,7 @@ func (t *transferReader) parseTransferEncoding() error {
 // Determine the expected body length, using RFC 7230 Section 3.3. This
 // function is not a method, because ultimately it should be shared by
 // ReadResponse and ReadRequest.
-func fixLength(isResponse bool, status int, requestMethod string, header Header, chunked bool) (int64, error) {
+func fixLength(isResponse bool, status int, requestMethod string, header Header, chunked bool) (n int64, err error) {
 	isRequest := !isResponse
 	contentLens := header["Content-Length"]
 
@@ -743,6 +728,14 @@ func fixLength(isResponse bool, status int, requestMethod string, header Header,
 		contentLens = header["Content-Length"]
 	}
 
+	// Reject requests with invalid Content-Length headers.
+	if len(contentLens) > 0 {
+		n, err = parseContentLength(contentLens)
+		if err != nil {
+			return -1, err
+		}
+	}
+
 	// Logic based on response type or status
 	if isResponse && noResponseBodyExpected(requestMethod) {
 		return 0, nil
@@ -755,17 +748,26 @@ func fixLength(isResponse bool, status int, requestMethod string, header Header,
 		return 0, nil
 	}
 
+	// According to RFC 9112, "If a message is received with both a
+	// Transfer-Encoding and a Content-Length header field, the Transfer-Encoding
+	// overrides the Content-Length. Such a message might indicate an attempt to
+	// perform request smuggling (Section 11.2) or response splitting (Section 11.1)
+	// and ought to be handled as an error. An intermediary that chooses to forward
+	// the message MUST first remove the received Content-Length field and process
+	// the Transfer-Encoding (as described below) prior to forwarding the message downstream."
+	//
+	// Chunked-encoding requests with either valid Content-Length
+	// headers or no Content-Length headers are accepted after removing
+	// the Content-Length field from header.
+	//
 	// Logic based on Transfer-Encoding
 	if chunked {
+		header.Del("Content-Length")
 		return -1, nil
 	}
 
+	// Logic based on Content-Length
 	if len(contentLens) > 0 {
-		// Logic based on Content-Length
-		n, err := parseContentLength(contentLens)
-		if err != nil {
-			return -1, err
-		}
 		return n, nil
 	}
 
@@ -999,9 +1001,7 @@ func mergeSetHeader(dst *Header, src Header) {
 		*dst = src
 		return
 	}
-	for k, vv := range src {
-		(*dst)[k] = vv
-	}
+	maps.Copy(*dst, src)
 }
 
 // unreadDataSizeLocked returns the number of bytes of unread input.
@@ -1088,7 +1088,7 @@ func (bl bodyLocked) Read(p []byte) (n int, err error) {
 	return bl.b.readLocked(p)
 }
 
-var laxContentLength = godebug.New("httplaxcontentlength")
+var httplaxcontentlength = godebug.New("httplaxcontentlength")
 
 // parseContentLength checks that the header is valid and then trims
 // whitespace. It returns -1 if no value is set otherwise the value
@@ -1102,8 +1102,8 @@ func parseContentLength(clHeaders []string) (int64, error) {
 	// The Content-Length must be a valid numeric value.
 	// See: https://datatracker.ietf.org/doc/html/rfc2616/#section-14.13
 	if cl == "" {
-		if laxContentLength.Value() == "1" {
-			laxContentLength.IncNonDefault()
+		if httplaxcontentlength.Value() == "1" {
+			httplaxcontentlength.IncNonDefault()
 			return -1, nil
 		}
 		return 0, badStringError("invalid empty Content-Length", cl)

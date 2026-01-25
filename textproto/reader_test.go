@@ -20,6 +20,12 @@ func reader(s string) *Reader {
 	return NewReader(bufio.NewReader(strings.NewReader(s)))
 }
 
+func readerWithHeaderOrderTracking(s string) *Reader {
+	r := NewReader(bufio.NewReader(strings.NewReader(s)))
+	r.TrackHeaderOrder = true
+	return r
+}
+
 func TestReadLine(t *testing.T) {
 	r := reader("line1\nline2\n")
 	s, err := r.ReadLine()
@@ -110,11 +116,12 @@ func TestReadDotBytes(t *testing.T) {
 }
 
 func TestReadMIMEHeader(t *testing.T) {
-	r := reader("my-key: Value 1  \r\nLong-key: Even \n Longer Value\r\nmy-Key: Value 2\r\n\n")
+	r := readerWithHeaderOrderTracking("my-key: Value 1  \r\nLong-key: Even \n Longer Value\r\nmy-Key: Value 2\r\n\n")
 	m, err := r.ReadMIMEHeader()
 	want := MIMEHeader{
-		"My-Key":   {"Value 1", "Value 2"},
-		"Long-Key": {"Even Longer Value"},
+		"My-Key":        {"Value 1", "Value 2"},
+		"Long-Key":      {"Even Longer Value"},
+		"Header-Order:": {"My-Key", "Long-Key", "My-Key"},
 	}
 	if !reflect.DeepEqual(m, want) || err != nil {
 		t.Fatalf("ReadMIMEHeader: %v, %v; want %v", m, err, want)
@@ -122,9 +129,9 @@ func TestReadMIMEHeader(t *testing.T) {
 }
 
 func TestReadMIMEHeaderSingle(t *testing.T) {
-	r := reader("Foo: bar\n\n")
+	r := readerWithHeaderOrderTracking("Foo: bar\n\n")
 	m, err := r.ReadMIMEHeader()
-	want := MIMEHeader{"Foo": {"bar"}}
+	want := MIMEHeader{"Foo": {"bar"}, "Header-Order:": {"Foo"}}
 	if !reflect.DeepEqual(m, want) || err != nil {
 		t.Fatalf("ReadMIMEHeader: %v, %v; want %v", m, err, want)
 	}
@@ -169,9 +176,8 @@ func TestReaderUpcomingHeaderKeys(t *testing.T) {
 func TestReadMIMEHeaderNoKey(t *testing.T) {
 	r := reader(": bar\ntest-1: 1\n\n")
 	m, err := r.ReadMIMEHeader()
-	want := MIMEHeader{"Test-1": {"1"}}
-	if !reflect.DeepEqual(m, want) || err != nil {
-		t.Fatalf("ReadMIMEHeader: %v, %v; want %v", m, err, want)
+	if err == nil {
+		t.Fatalf("ReadMIMEHeader: %v; want error for empty key", m)
 	}
 }
 
@@ -196,7 +202,7 @@ func TestLargeReadMIMEHeader(t *testing.T) {
 // with spaces before colons, and accept spaces in keys.
 func TestReadMIMEHeaderNonCompliant(t *testing.T) {
 	// These invalid headers will be rejected by net/http according to RFC 7230.
-	r := reader("Foo: bar\r\n" +
+	r := readerWithHeaderOrderTracking("Foo: bar\r\n" +
 		"Content-Language: en\r\n" +
 		"SID : 0\r\n" +
 		"Audio Mode : None\r\n" +
@@ -208,6 +214,7 @@ func TestReadMIMEHeaderNonCompliant(t *testing.T) {
 		"SID ":             {"0"},
 		"Audio Mode ":      {"None"},
 		"Privilege ":       {"127"},
+		"Header-Order:":    {"Foo", "Content-Language", "SID ", "Audio Mode ", "Privilege "},
 	}
 	if !reflect.DeepEqual(m, want) || err != nil {
 		t.Fatalf("ReadMIMEHeader =\n%v, %v; want:\n%v", m, err, want)
@@ -287,7 +294,7 @@ func TestReadMIMEHeaderTrimContinued(t *testing.T) {
 	// In this header, \n and \r\n terminated lines are mixed on purpose.
 	// We expect each line to be trimmed (prefix and suffix) before being concatenated.
 	// Keep the spaces as they are.
-	r := reader("" + // for code formatting purpose.
+	r := readerWithHeaderOrderTracking("" + // for code formatting purpose.
 		"a:\n" +
 		" 0 \r\n" +
 		"b:1 \t\r\n" +
@@ -299,9 +306,10 @@ func TestReadMIMEHeaderTrimContinued(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := MIMEHeader{
-		"A": {"0"},
-		"B": {"1"},
-		"C": {"2 3 4"},
+		"A":             {"0"},
+		"B":             {"1"},
+		"C":             {"2 3 4"},
+		"Header-Order:": {"A", "B", "C"},
 	}
 	if !reflect.DeepEqual(m, want) {
 		t.Fatalf("ReadMIMEHeader mismatch.\n got: %q\nwant: %q", m, want)

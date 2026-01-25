@@ -152,7 +152,15 @@ func (r *Response) Location() (*url.URL, error) {
 // After that call, clients can inspect resp.Trailer to find key/value
 // pairs included in the response trailer.
 func ReadResponse(r *bufio.Reader, req *Request) (*Response, error) {
+	return readResponse(r, req, false)
+}
+
+// readResponse is the internal implementation of ReadResponse.
+// If trackHeaderOrder is true, the order of received headers is stored
+// in the Response.Header map under the HeaderOrderKey.
+func readResponse(r *bufio.Reader, req *Request, trackHeaderOrder bool) (*Response, error) {
 	tp := textproto.NewReader(r)
+	tp.TrackHeaderOrder = trackHeaderOrder
 	resp := &Response{
 		Request: req,
 	}

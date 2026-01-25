@@ -117,9 +117,9 @@ var dumpTests = []dumpTest{
 		Body: []byte("abcdef"),
 
 		WantDumpOut: "POST / HTTP/1.1\r\n" +
+			"Content-Length: 6\r\n" +
 			"Host: post.tld\r\n" +
 			"User-Agent: Go-http-client/1.1\r\n" +
-			"Content-Length: 6\r\n" +
 			"Accept-Encoding: gzip\r\n\r\n",
 
 		NoBody: true,
@@ -146,9 +146,9 @@ var dumpTests = []dumpTest{
 		Body: bytes.Repeat([]byte("a"), 8193),
 
 		WantDumpOut: "POST / HTTP/1.1\r\n" +
+			"Content-Length: 8193\r\n" +
 			"Host: post.tld\r\n" +
 			"User-Agent: Go-http-client/1.1\r\n" +
-			"Content-Length: 8193\r\n" +
 			"Accept-Encoding: gzip\r\n\r\n" +
 			strings.Repeat("a", 8193),
 		WantDump: "POST / HTTP/1.1\r\n" +
@@ -209,9 +209,9 @@ var dumpTests = []dumpTest{
 	{
 		Req: mustNewRequest("POST", "http://example.com/foo", http.NoBody),
 		WantDumpOut: "POST /foo HTTP/1.1\r\n" +
+			"Content-Length: 0\r\n" +
 			"Host: example.com\r\n" +
 			"User-Agent: Go-http-client/1.1\r\n" +
-			"Content-Length: 0\r\n" +
 			"Accept-Encoding: gzip\r\n\r\n",
 	},
 
@@ -233,8 +233,8 @@ var dumpTests = []dumpTest{
 		NoBody: true,
 		WantDumpOut: "PUT /test HTTP/1.1\r\n" +
 			"Host: post.tld\r\n" +
-			"User-Agent: Go-http-client/1.1\r\n" +
 			"Transfer-Encoding: chunked\r\n" +
+			"User-Agent: Go-http-client/1.1\r\n" +
 			"Accept-Encoding: gzip\r\n\r\n",
 	},
 

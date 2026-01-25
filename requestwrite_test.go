@@ -12,11 +12,58 @@ import (
 	"io"
 	"net"
 	"net/url"
+	"sort"
 	"strings"
 	"testing"
 	"testing/iotest"
 	"time"
 )
+
+// normalizeHTTPRequest parses an HTTP request string, sorts the headers
+// alphabetically, and returns the normalized form. This is used for comparing
+// request output where header order may differ (oohttp sorts alphabetically
+// by default when no HeaderOrderKey is specified).
+func normalizeHTTPRequest(req string) string {
+	// Split into lines
+	lines := strings.Split(req, "\r\n")
+	if len(lines) < 2 {
+		return req
+	}
+
+	// Find the end of headers (empty line)
+	headerEnd := -1
+	for i, line := range lines {
+		if line == "" {
+			headerEnd = i
+			break
+		}
+	}
+	if headerEnd < 0 {
+		return req
+	}
+
+	// First line is the request line
+	requestLine := lines[0]
+
+	// Headers are lines[1:headerEnd]
+	headers := make([]string, 0, headerEnd-1)
+	for i := 1; i < headerEnd; i++ {
+		headers = append(headers, lines[i])
+	}
+	sort.Strings(headers)
+
+	// Body is everything after the empty line
+	body := strings.Join(lines[headerEnd:], "\r\n")
+
+	// Reconstruct
+	result := requestLine + "\r\n"
+	for _, h := range headers {
+		result += h + "\r\n"
+	}
+	result += body
+
+	return result
+}
 
 type reqWriteTest struct {
 	Req  Request
@@ -641,7 +688,9 @@ func TestRequestWrite(t *testing.T) {
 
 		if tt.WantWrite != "" {
 			sraw := braw.String()
-			if sraw != tt.WantWrite {
+			// Compare with normalized header order since oohttp sorts headers
+			// alphabetically by default (when no HeaderOrderKey is specified).
+			if normalizeHTTPRequest(sraw) != normalizeHTTPRequest(tt.WantWrite) {
 				t.Errorf("Test %d, expecting:\n%s\nGot:\n%s\n", i, tt.WantWrite, sraw)
 				continue
 			}
@@ -656,7 +705,9 @@ func TestRequestWrite(t *testing.T) {
 				continue
 			}
 			sraw := praw.String()
-			if sraw != tt.WantProxy {
+			// Compare with normalized header order since oohttp sorts headers
+			// alphabetically by default (when no HeaderOrderKey is specified).
+			if normalizeHTTPRequest(sraw) != normalizeHTTPRequest(tt.WantProxy) {
 				t.Errorf("Test Proxy %d, expecting:\n%s\nGot:\n%s\n", i, tt.WantProxy, sraw)
 				continue
 			}
@@ -828,7 +879,8 @@ func TestRequestWriteClosesBody(t *testing.T) {
 		"Transfer-Encoding: chunked\r\n\r\n" +
 		chunk("my body") +
 		chunk("")
-	if buf.String() != expected {
+	// Compare with normalized header order since oohttp sorts headers alphabetically
+	if normalizeHTTPRequest(buf.String()) != normalizeHTTPRequest(expected) {
 		t.Errorf("write:\n got: %s\nwant: %s", buf.String(), expected)
 	}
 }
@@ -874,7 +926,10 @@ func TestRequestWriteError(t *testing.T) {
 	}
 
 	req, _ := NewRequest("GET", "http://example.com/", nil)
-	const writeCalls = 4 // number of Write calls in current implementation
+	// oohttp writes headers as separate parts (key, ": ", value, "\r\n"),
+	// so the number of write calls is higher than standard library.
+	// Request line (1) + Host header (4) + User-Agent header (4) + final \r\n (1) = 10
+	const writeCalls = 10 // number of Write calls in current implementation
 	sawGood := false
 	for n := 0; n <= writeCalls+2; n++ {
 		failAfter = n

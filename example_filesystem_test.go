@@ -5,6 +5,7 @@
 package http_test
 
 import (
+	"io"
 	"io/fs"
 	"log"
 	"strings"
@@ -41,6 +42,9 @@ func (f dotFileHidingFile) Readdir(n int) (fis []fs.FileInfo, err error) {
 			fis = append(fis, file)
 		}
 	}
+	if err == nil && n > 0 && len(fis) == 0 {
+		err = io.EOF
+	}
 	return
 }
 
@@ -62,7 +66,7 @@ func (fsys dotFileHidingFileSystem) Open(name string) (http.File, error) {
 	if err != nil {
 		return nil, err
 	}
-	return dotFileHidingFile{file}, err
+	return dotFileHidingFile{file}, nil
 }
 
 func ExampleFileServer_dotFileHiding() {

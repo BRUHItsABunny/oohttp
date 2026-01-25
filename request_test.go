@@ -10,6 +10,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -19,6 +20,8 @@ import (
 	"os"
 	"reflect"
 	"regexp"
+	"slices"
+	"sort"
 	"strings"
 	"testing"
 
@@ -68,22 +71,22 @@ func TestParseFormQuery(t *testing.T) {
 	if bz := req.PostFormValue("z"); bz != "post" {
 		t.Errorf(`req.PostFormValue("z") = %q, want "post"`, bz)
 	}
-	if qs := req.Form["q"]; !reflect.DeepEqual(qs, []string{"foo", "bar"}) {
+	if qs := req.Form["q"]; !slices.Equal(qs, []string{"foo", "bar"}) {
 		t.Errorf(`req.Form["q"] = %q, want ["foo", "bar"]`, qs)
 	}
-	if both := req.Form["both"]; !reflect.DeepEqual(both, []string{"y", "x"}) {
+	if both := req.Form["both"]; !slices.Equal(both, []string{"y", "x"}) {
 		t.Errorf(`req.Form["both"] = %q, want ["y", "x"]`, both)
 	}
 	if prio := req.FormValue("prio"); prio != "2" {
 		t.Errorf(`req.FormValue("prio") = %q, want "2" (from body)`, prio)
 	}
-	if orphan := req.Form["orphan"]; !reflect.DeepEqual(orphan, []string{"", "nope"}) {
+	if orphan := req.Form["orphan"]; !slices.Equal(orphan, []string{"", "nope"}) {
 		t.Errorf(`req.FormValue("orphan") = %q, want "" (from body)`, orphan)
 	}
-	if empty := req.Form["empty"]; !reflect.DeepEqual(empty, []string{"", "not"}) {
+	if empty := req.Form["empty"]; !slices.Equal(empty, []string{"", "not"}) {
 		t.Errorf(`req.FormValue("empty") = %q, want "" (from body)`, empty)
 	}
-	if nokey := req.Form[""]; !reflect.DeepEqual(nokey, []string{"nokey"}) {
+	if nokey := req.Form[""]; !slices.Equal(nokey, []string{"nokey"}) {
 		t.Errorf(`req.FormValue("nokey") = %q, want "nokey" (from body)`, nokey)
 	}
 }
@@ -530,8 +533,16 @@ func TestReadRequestErrors(t *testing.T) {
 				t.Errorf("#%d: got nil err; want %q", i, tt.err)
 			}
 
-			if !reflect.DeepEqual(tt.header, req.Header) {
-				t.Errorf("#%d: gotHeader: %q wantHeader: %q", i, req.Header, tt.header)
+			// Exclude oohttp-specific Header-Order: and PHeader-Order: keys from comparison
+			gotHeader := make(Header, len(req.Header))
+			for k, v := range req.Header {
+				if k == HeaderOrderKey || k == PHeaderOrderKey {
+					continue
+				}
+				gotHeader[k] = v
+			}
+			if !reflect.DeepEqual(tt.header, gotHeader) {
+				t.Errorf("#%d: gotHeader: %q wantHeader: %q", i, gotHeader, tt.header)
 			}
 			continue
 		}
@@ -758,14 +769,16 @@ func TestRequestWriteBufferedWriter(t *testing.T) {
 	got := []string{}
 	req, _ := NewRequest("GET", "http://foo.com/", nil)
 	req.Write(logWrites{t, &got})
+	// Concatenate oohttp's separate header writes
+	gotConcat := concatenateWrites(got)
 	want := []string{
 		"GET / HTTP/1.1\r\n",
 		"Host: foo.com\r\n",
 		"User-Agent: " + DefaultUserAgent + "\r\n",
 		"\r\n",
 	}
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("Writes = %q\n  Want = %q", got, want)
+	if !equalWritesSorted(gotConcat, want) {
+		t.Errorf("Writes = %q\n  Want = %q", gotConcat, want)
 	}
 }
 
@@ -778,14 +791,16 @@ func TestRequestBadHostHeader(t *testing.T) {
 	req.Host = "foo.com\nnewline"
 	req.URL.Host = "foo.com\nnewline"
 	req.Write(logWrites{t, &got})
+	// Concatenate oohttp's separate header writes
+	gotConcat := concatenateWrites(got)
 	want := []string{
 		"GET /after HTTP/1.1\r\n",
 		"Host: \r\n",
 		"User-Agent: " + DefaultUserAgent + "\r\n",
 		"\r\n",
 	}
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("Writes = %q\n  Want = %q", got, want)
+	if !equalWritesSorted(gotConcat, want) {
+		t.Errorf("Writes = %q\n  Want = %q", gotConcat, want)
 	}
 }
 
@@ -797,15 +812,58 @@ func TestRequestBadUserAgent(t *testing.T) {
 	}
 	req.Header.Set("User-Agent", "evil\r\nX-Evil: evil")
 	req.Write(logWrites{t, &got})
+	// Concatenate oohttp's separate header writes
+	gotConcat := concatenateWrites(got)
 	want := []string{
 		"GET /after HTTP/1.1\r\n",
 		"Host: foo\r\n",
 		"User-Agent: evil  X-Evil: evil\r\n",
 		"\r\n",
 	}
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("Writes = %q\n  Want = %q", got, want)
+	if !equalWritesSorted(gotConcat, want) {
+		t.Errorf("Writes = %q\n  Want = %q", gotConcat, want)
 	}
+}
+
+// concatenateWrites combines oohttp's separate header part writes into complete lines.
+// oohttp writes headers as (key, ": ", value, "\r\n") separately.
+func concatenateWrites(writes []string) []string {
+	var result []string
+	var current string
+	for _, s := range writes {
+		current += s
+		if strings.HasSuffix(current, "\r\n") {
+			result = append(result, current)
+			current = ""
+		}
+	}
+	if current != "" {
+		result = append(result, current)
+	}
+	return result
+}
+
+// equalWritesSorted compares two write slices, sorting headers for comparison
+// since oohttp sorts headers alphabetically by default.
+func equalWritesSorted(got, want []string) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	if len(got) < 2 {
+		return slices.Equal(got, want)
+	}
+	// First line (request line) and last line (\r\n) must match exactly
+	if got[0] != want[0] || got[len(got)-1] != want[len(want)-1] {
+		return false
+	}
+	// Sort middle lines (headers) for comparison
+	gotHeaders := make([]string, len(got)-2)
+	wantHeaders := make([]string, len(want)-2)
+	copy(gotHeaders, got[1:len(got)-1])
+	copy(wantHeaders, want[1:len(want)-1])
+	sort.Strings(gotHeaders)
+	sort.Strings(wantHeaders)
+	return slices.Equal(gotHeaders, wantHeaders)
 }
 
 func TestStarRequest(t *testing.T) {
@@ -1256,6 +1314,76 @@ func TestRequestCookie(t *testing.T) {
 	}
 }
 
+func TestRequestCookiesByName(t *testing.T) {
+	tests := []struct {
+		in     []*Cookie
+		filter string
+		want   []*Cookie
+	}{
+		{
+			in: []*Cookie{
+				{Name: "foo", Value: "foo-1"},
+				{Name: "bar", Value: "bar"},
+			},
+			filter: "foo",
+			want:   []*Cookie{{Name: "foo", Value: "foo-1"}},
+		},
+		{
+			in: []*Cookie{
+				{Name: "foo", Value: "foo-1"},
+				{Name: "foo", Value: "foo-2"},
+				{Name: "bar", Value: "bar"},
+			},
+			filter: "foo",
+			want: []*Cookie{
+				{Name: "foo", Value: "foo-1"},
+				{Name: "foo", Value: "foo-2"},
+			},
+		},
+		{
+			in: []*Cookie{
+				{Name: "bar", Value: "bar"},
+			},
+			filter: "foo",
+			want:   []*Cookie{},
+		},
+		{
+			in: []*Cookie{
+				{Name: "bar", Value: "bar"},
+			},
+			filter: "",
+			want:   []*Cookie{},
+		},
+		{
+			in:     []*Cookie{},
+			filter: "foo",
+			want:   []*Cookie{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.filter, func(t *testing.T) {
+			req, err := NewRequest("GET", "http://example.com/", nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, c := range tt.in {
+				req.AddCookie(c)
+			}
+
+			got := req.CookiesNamed(tt.filter)
+
+			if !reflect.DeepEqual(got, tt.want) {
+				asStr := func(v any) string {
+					blob, _ := json.MarshalIndent(v, "", "  ")
+					return string(blob)
+				}
+				t.Fatalf("Result mismatch\n\tGot: %s\n\tWant: %s", asStr(got), asStr(tt.want))
+			}
+		})
+	}
+}
+
 const (
 	fileaContents = "This is a test file."
 	filebContents = "Another test file."
@@ -1456,7 +1584,7 @@ func TestPathValueNoMatch(t *testing.T) {
 	}
 }
 
-func TestPathValue(t *testing.T) {
+func TestPathValueAndPattern(t *testing.T) {
 	for _, test := range []struct {
 		pattern string
 		url     string
@@ -1488,6 +1616,14 @@ func TestPathValue(t *testing.T) {
 				"other": "there/is//more",
 			},
 		},
+		{
+			"/names/{name}/{other...}",
+			"/names/n/*",
+			map[string]string{
+				"name":  "n",
+				"other": "*",
+			},
+		},
 	} {
 		mux := NewServeMux()
 		mux.HandleFunc(test.pattern, func(w ResponseWriter, r *Request) {
@@ -1496,6 +1632,9 @@ func TestPathValue(t *testing.T) {
 				if got != want {
 					t.Errorf("%q, %q: got %q, want %q", test.pattern, name, got, want)
 				}
+			}
+			if r.Pattern != test.pattern {
+				t.Errorf("pattern: got %s, want %s", r.Pattern, test.pattern)
 			}
 		})
 		server := httptest.NewServer(mux)
