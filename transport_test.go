@@ -6192,6 +6192,7 @@ func TestTransportClone(t *testing.T) {
 		HTTP2SettingsFrameParameters: []int64{1},
 		WindowUpdateIncrement:        1,
 		PostHandshakeCallback:        func(string, *tls.ConnectionState) error { return nil },
+		TrackResponseHeaderOrder:     true,
 	}
 	tr.Protocols.SetHTTP1(true)
 	tr.Protocols.SetHTTP2(true)

@@ -9801,6 +9801,12 @@ func (rl *http2clientConnReadLoop) handleResponse(cs *http2clientStream, f *http
 		StatusCode: statusCode,
 		Status:     status + " " + StatusText(statusCode),
 	}
+
+	// Track header order if enabled (check t1 which is the main Transport)
+	trackOrder := rl.cc.t.t1 != nil && rl.cc.t.t1.TrackResponseHeaderOrder
+	var headerOrder []string
+	seenHeaders := make(map[string]bool)
+
 	for _, hf := range regularFields {
 		key := httpcommon.CanonicalHeader(hf.Name)
 		if key == "Trailer" {
@@ -9813,6 +9819,12 @@ func (rl *http2clientConnReadLoop) handleResponse(cs *http2clientStream, f *http
 				t[httpcommon.CanonicalHeader(v)] = nil
 			})
 		} else {
+			// Track header order (only first occurrence of each header)
+			if trackOrder && !seenHeaders[key] {
+				headerOrder = append(headerOrder, hf.Name) // Use original lowercase name
+				seenHeaders[key] = true
+			}
+
 			vv := header[key]
 			if vv == nil && len(strs) > 0 {
 				// More than likely this will be a single-element key.
@@ -9826,6 +9838,11 @@ func (rl *http2clientConnReadLoop) handleResponse(cs *http2clientStream, f *http
 				header[key] = append(vv, hf.Value)
 			}
 		}
+	}
+
+	// Store header order if tracking was enabled
+	if trackOrder && len(headerOrder) > 0 {
+		header[HeaderOrderKey] = headerOrder
 	}
 
 	if statusCode >= 100 && statusCode <= 199 {

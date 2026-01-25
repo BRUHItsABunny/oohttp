@@ -22,6 +22,11 @@ type Reader struct {
 	R   *bufio.Reader
 	dot *dotReader
 	buf []byte // a re-usable buffer for readContinuedLineSlice
+
+	// TrackHeaderOrder, if true, causes ReadMIMEHeader to track
+	// the order in which headers are received and store it in
+	// the "Header-Order:" key of the returned MIMEHeader.
+	TrackHeaderOrder bool
 }
 
 // NewReader returns a new Reader reading from r.
@@ -572,7 +577,10 @@ func readMIMEHeader(r *Reader, maxMemory, maxHeaders int64) (MIMEHeader, error) 
 			m[key] = append(vv, value)
 		}
 
-		m["Header-Order:"] = append(m["Header-Order:"], key)
+		// Track header order if enabled
+		if r.TrackHeaderOrder {
+			m["Header-Order:"] = append(m["Header-Order:"], key)
+		}
 
 		if err != nil {
 			return m, err

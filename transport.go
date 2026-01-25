@@ -335,6 +335,13 @@ type Transport struct {
 	// If ForceAttemptHTTP2 is true, or if TLSNextProto contains an "h2" entry,
 	// the default is HTTP/1 and HTTP/2.
 	Protocols *Protocols
+
+	// TrackResponseHeaderOrder, if true, causes the Transport to track
+	// the order in which response headers are received from the server.
+	// The order is stored in the Response.Header map under the HeaderOrderKey
+	// ("Header-Order:") key. This applies to both HTTP/1 and HTTP/2 responses.
+	// This is useful for server fingerprinting.
+	TrackResponseHeaderOrder bool
 }
 
 type HTTP2PriorityFrameSettings struct {
@@ -399,6 +406,7 @@ func (t *Transport) Clone() *Transport {
 		DecompressionRegistry:        t.DecompressionRegistry,
 		HTTP2SettingsFrameParameters: t.HTTP2SettingsFrameParameters,
 		PostHandshakeCallback:        t.PostHandshakeCallback,
+		TrackResponseHeaderOrder:     t.TrackResponseHeaderOrder,
 	}
 	if t.HTTP2PriorityFrameSettings != nil {
 		t2.HTTP2PriorityFrameSettings = &HTTP2PriorityFrameSettings{}
@@ -2592,8 +2600,9 @@ func (pc *persistConn) readResponse(rc requestAndChan, trace *httptrace.ClientTr
 	}
 
 	continueCh := rc.continueCh
+	trackHeaderOrder := pc.t.TrackResponseHeaderOrder
 	for {
-		resp, err = ReadResponse(pc.br, rc.treq.Request)
+		resp, err = readResponse(pc.br, rc.treq.Request, trackHeaderOrder)
 		if err != nil {
 			return
 		}
