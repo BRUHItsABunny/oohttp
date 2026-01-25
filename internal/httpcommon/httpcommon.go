@@ -174,6 +174,14 @@ var (
 	ErrRequestHeaderListSize = errors.New("request header list larger than peer's advertised limit")
 )
 
+// HeaderOrderKey is a magic Key for header ordering.
+// If present in the header map, it defines the order in which headers will be written.
+const HeaderOrderKey = "Header-Order:"
+
+// PHeaderOrderKey is a magic Key for HTTP/2 pseudo-header ordering.
+// Valid fields are :authority, :method, :path, :scheme
+const PHeaderOrderKey = "PHeader-Order:"
+
 // Request is a subset of http.Request.
 // It'd be simpler to pass an *http.Request, of course, but we can't depend on net/http
 // without creating a dependency cycle.
@@ -286,15 +294,39 @@ func EncodeHeaders(ctx context.Context, param EncodeHeadersParam, headerf func(n
 		// target URI (the path-absolute production and optionally a '?' character
 		// followed by the query production, see Sections 3.3 and 3.4 of
 		// [RFC3986]).
-		f(":authority", host)
 		m := req.Method
 		if m == "" {
 			m = "GET"
 		}
-		f(":method", m)
-		if !isNormalConnect {
-			f(":path", path)
-			f(":scheme", req.URL.Scheme)
+
+		// Check for custom pseudo-header ordering
+		pHeaderOrder, hasPHeaderOrder := req.Header[PHeaderOrderKey]
+		if hasPHeaderOrder {
+			// Follow the specified pseudo-header order
+			for _, p := range pHeaderOrder {
+				switch p {
+				case ":authority":
+					f(":authority", host)
+				case ":method":
+					f(":method", m)
+				case ":path":
+					if !isNormalConnect {
+						f(":path", path)
+					}
+				case ":scheme":
+					if !isNormalConnect {
+						f(":scheme", req.URL.Scheme)
+					}
+				}
+			}
+		} else {
+			// Default pseudo-header order
+			f(":authority", host)
+			f(":method", m)
+			if !isNormalConnect {
+				f(":path", path)
+				f(":scheme", req.URL.Scheme)
+			}
 		}
 		if protocol != "" {
 			f(":protocol", protocol)
@@ -303,8 +335,51 @@ func EncodeHeaders(ctx context.Context, param EncodeHeadersParam, headerf func(n
 			f("trailer", trailers)
 		}
 
+		// Build sorted list of headers if HeaderOrderKey is present
+		headerOrder, hasHeaderOrder := req.Header[HeaderOrderKey]
+		var sortedKeys []string
+		if hasHeaderOrder {
+			// Create order map for sorting
+			orderMap := make(map[string]int)
+			for i, v := range headerOrder {
+				orderMap[strings.ToLower(v)] = i
+			}
+			// Collect all header keys
+			for k := range req.Header {
+				if k == HeaderOrderKey || k == PHeaderOrderKey {
+					continue
+				}
+				sortedKeys = append(sortedKeys, k)
+			}
+			// Sort by the specified order
+			sort.Slice(sortedKeys, func(i, j int) bool {
+				ki := strings.ToLower(sortedKeys[i])
+				kj := strings.ToLower(sortedKeys[j])
+				idxi, iok := orderMap[ki]
+				idxj, jok := orderMap[kj]
+				if !iok && !jok {
+					return sortedKeys[i] < sortedKeys[j]
+				} else if !iok {
+					return false
+				} else if !jok {
+					return true
+				}
+				return idxi < idxj
+			})
+		} else {
+			// Collect all header keys for default iteration
+			for k := range req.Header {
+				if k == HeaderOrderKey || k == PHeaderOrderKey {
+					continue
+				}
+				sortedKeys = append(sortedKeys, k)
+			}
+			sort.Strings(sortedKeys)
+		}
+
 		var didUA bool
-		for k, vv := range req.Header {
+		for _, k := range sortedKeys {
+			vv := req.Header[k]
 			if asciiEqualFold(k, "host") || asciiEqualFold(k, "content-length") {
 				// Host is :authority, already sent.
 				// Content-Length is automatic, set below.
@@ -418,9 +493,12 @@ func EncodeHeaders(ctx context.Context, param EncodeHeadersParam, headerf func(n
 // for a request.
 func IsRequestGzip(method string, header map[string][]string, disableCompression bool) bool {
 	// TODO(bradfitz): this is a copy of the logic in net/http. Unify somewhere?
+	// Check for both canonical and lowercase header names
+	hasAcceptEncoding := len(header["Accept-Encoding"]) > 0 || len(header["accept-encoding"]) > 0
+	hasRange := len(header["Range"]) > 0 || len(header["range"]) > 0
 	if !disableCompression &&
-		len(header["Accept-Encoding"]) == 0 &&
-		len(header["Range"]) == 0 &&
+		!hasAcceptEncoding &&
+		!hasRange &&
 		method != "HEAD" {
 		// Request gzip only, not deflate. Deflate is ambiguous and
 		// not as universally supported anyway.
@@ -495,7 +573,7 @@ func validPseudoPath(v string) bool {
 
 func validateHeaders(hdrs map[string][]string) string {
 	for k, vv := range hdrs {
-		if !httpguts.ValidHeaderFieldName(k) && k != ":protocol" {
+		if !httpguts.ValidHeaderFieldName(k) && k != ":protocol" && k != HeaderOrderKey && k != PHeaderOrderKey {
 			return fmt.Sprintf("name %q", k)
 		}
 		for _, v := range vv {
