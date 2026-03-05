@@ -1,11 +1,11 @@
 module github.com/BRUHItsABunny/oohttp
 
-go 1.25
+go 1.26.0
 
 require (
 	github.com/andybalholm/brotli v1.2.0
-	github.com/klauspost/compress v1.18.3
-	golang.org/x/net v0.49.0
+	github.com/klauspost/compress v1.18.4
+	golang.org/x/net v0.51.0
 )
 
-require golang.org/x/text v0.33.0 // indirect
+require golang.org/x/text v0.34.0 // indirect
