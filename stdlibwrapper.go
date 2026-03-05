@@ -31,6 +31,7 @@ func (txp *StdlibTransport) RoundTrip(stdReq *http.Request) (*http.Response, err
 		RequestURI:       stdReq.RequestURI,
 		TLS:              stdReq.TLS,
 		Cancel:           stdReq.Cancel,
+		Pattern:          stdReq.Pattern,
 		Response:         nil, // cannot assign this field
 		ctx:              stdReq.Context(),
 	}
