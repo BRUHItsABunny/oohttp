@@ -1106,6 +1106,15 @@ func http2configFromTransport(h2 *http2Transport) http2http2Config {
 	if h2.t1 != nil {
 		http2fillNetHTTPConfig(&conf, h2.t1.HTTP2)
 	}
+	// If using custom HTTP2 SETTINGS frame parameters and no explicit MaxDecoderHeaderTableSize
+	// was set, use the HEADER_TABLE_SIZE value from the custom settings. Otherwise the decoder
+	// will reject dynamic table size updates that match what we advertised to the peer.
+	if conf.MaxDecoderHeaderTableSize == 0 && h2.t1 != nil &&
+		h2.t1.HTTP2SettingsFrameParameters != nil && len(h2.t1.HTTP2SettingsFrameParameters) > 0 {
+		if v := h2.t1.HTTP2SettingsFrameParameters[0]; v > 0 && v <= math.MaxUint32 {
+			conf.MaxDecoderHeaderTableSize = uint32(v)
+		}
+	}
 	http2setConfigDefaults(&conf, false)
 	return conf
 }
