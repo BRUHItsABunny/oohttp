@@ -2543,11 +2543,18 @@ func (pc *persistConn) readLoop() {
 
 		resp.Body = body
 
-		// Only apply decompression if the transport added Accept-Encoding AND
-		// the response has a Content-Encoding header indicating compression AND
-		// all encodings are supported by the registry.
+		// Apply decompression whenever the response advertises a
+		// Content-Encoding we can decode and the request didn't opt
+		// out (via DisableCompression, HEAD, or Range). Unlike the
+		// upstream stdlib behaviour, we also auto-decompress when the
+		// caller set their own Accept-Encoding: that is the norm for
+		// this fork's TLS-spoofing use case, where clients advertise
+		// gzip/br/zstd/... themselves and still expect a plaintext body.
 		contentEncoding := resp.Header.Get("Content-Encoding")
-		if rc.addedGzip && contentEncoding != "" && contentEncoding != "identity" {
+		canAutoDecompress := !pc.t.DisableCompression &&
+			rc.treq.Method != "HEAD" &&
+			rc.treq.Header.Get("Range") == ""
+		if canAutoDecompress && contentEncoding != "" && contentEncoding != "identity" {
 			// Check if all encodings in the Content-Encoding header are supported
 			registry := pc.t.DecompressionRegistry
 			if registry == nil {

@@ -7760,11 +7760,12 @@ type http2clientStream struct {
 	ctx       context.Context
 	reqCancel <-chan struct{}
 
-	trace         *httptrace.ClientTrace // or nil
-	ID            uint32
-	bufPipe       http2pipe // buffered pipe with the flow-controlled response payload
-	requestedGzip bool
-	isHead        bool
+	trace             *httptrace.ClientTrace // or nil
+	ID                uint32
+	bufPipe           http2pipe // buffered pipe with the flow-controlled response payload
+	requestedGzip     bool
+	isHead            bool
+	canAutoDecompress bool
 
 	abortOnce sync.Once
 	abort     chan struct{} // closed to signal stream should end immediately
@@ -8738,6 +8739,14 @@ func (cc *http2ClientConn) roundTrip(req *Request, streamf func(*http2clientStre
 	}
 
 	cs.requestedGzip = httpcommon.IsRequestGzip(req.Method, req.Header, cc.t.disableCompression())
+	// canAutoDecompress permits decoding of any supported Content-Encoding
+	// on the response — even when the caller set their own Accept-Encoding
+	// (typical of TLS-spoofing clients). Still honours the same opt-outs as
+	// the gzip auto-request path: HEAD (no body), Range (partial content
+	// cannot be decoded piecewise), and DisableCompression.
+	cs.canAutoDecompress = !cc.t.disableCompression() &&
+		req.Method != "HEAD" &&
+		req.Header.Get("Range") == ""
 
 	go cs.doRequest(req, streamf)
 
@@ -9933,11 +9942,12 @@ func (rl *http2clientConnReadLoop) handleResponse(cs *http2clientStream, f *http
 	cs.bytesRemain = res.ContentLength
 	res.Body = http2transportResponseBody{cs}
 
-	// Only apply decompression if the transport added Accept-Encoding AND
-	// the response has a Content-Encoding header indicating compression AND
-	// all encodings are supported by the registry.
+	// Apply decompression whenever the response advertises a supported
+	// Content-Encoding and the request didn't opt out (HEAD/Range/DisableCompression).
+	// Unlike stdlib, we also auto-decompress when the caller set their own
+	// Accept-Encoding: that is the norm for this fork's TLS-spoofing use case.
 	contentEncoding := res.Header.Get("Content-Encoding")
-	if cs.requestedGzip && contentEncoding != "" && contentEncoding != "identity" {
+	if cs.canAutoDecompress && contentEncoding != "" && contentEncoding != "identity" {
 		// Check if all encodings in the Content-Encoding header are supported
 		registry := rl.cc.t.t1.DecompressionRegistry
 		if registry == nil {
