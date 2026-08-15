@@ -1017,16 +1017,22 @@ func testTransportHeadChunkedResponse(t *testing.T, mode testMode) {
 }
 
 var roundTripTests = []struct {
-	accept       string
-	expectAccept string
-	compressed   bool
+	accept        string
+	expectAccept  string
+	compressed    bool
+	expectContEnc string
 }{
 	// Requests with no accept-encoding header use transparent compression
-	{"", "gzip", false},
+	{"", "gzip", false, ""},
 	// Requests with other accept-encoding should pass through unmodified
-	{"foo", "foo", false},
-	// Requests with accept-encoding == gzip should be passed through
-	{"gzip", "gzip", true},
+	{"foo", "foo", false, "foo"},
+	// NOTE: code specific to github.com/BRUHItsABunny/oohttp
+	// Upstream passes the compressed body through when the caller sets
+	// Accept-Encoding: gzip itself. This fork instead decompresses any
+	// Content-Encoding it knows how to decode (see the DecompressionRegistry
+	// handling in transport.go), because callers spoofing a browser's
+	// Accept-Encoding still expect a plaintext body.
+	{"gzip", "gzip", false, ""},
 }
 
 // Test that the modification made to the Request by the RoundTripper is cleaned up
@@ -1085,7 +1091,7 @@ func testRoundTripGzip(t *testing.T, mode testMode) {
 		if g, e := req.Header.Get("Accept-Encoding"), test.accept; g != e {
 			t.Errorf("%d. Accept-Encoding = %q; want %q (it was mutated, in violation of RoundTrip contract)", i, g, e)
 		}
-		if g, e := res.Header.Get("Content-Encoding"), test.accept; g != e {
+		if g, e := res.Header.Get("Content-Encoding"), test.expectContEnc; g != e {
 			t.Errorf("%d. Content-Encoding = %q; want %q", i, g, e)
 		}
 	}
