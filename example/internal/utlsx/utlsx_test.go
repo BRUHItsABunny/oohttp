@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"syscall"
 	"testing"
 
 	oohttp "github.com/BRUHItsABunny/oohttp"
@@ -103,7 +104,12 @@ func TestNewOOHTTPTransportWithCustomProxy(t *testing.T) {
 		t.Fatal(err)
 	}
 	resp, err := txp.RoundTrip(req)
-	if !errors.Is(err, io.ErrUnexpectedEOF) {
+	// The proxy closes the connection right after accepting it. Most systems
+	// report that as an unexpected EOF while reading the CONNECT response,
+	// but Windows instead fails the read with WSAECONNABORTED because we
+	// already wrote the CONNECT request to a socket the peer has closed.
+	var errno syscall.Errno
+	if !errors.Is(err, io.ErrUnexpectedEOF) && !errors.As(err, &errno) {
 		t.Fatal("unexpected err", err)
 	}
 	if resp != nil {
