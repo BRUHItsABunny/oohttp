@@ -1,6 +1,6 @@
 module github.com/BRUHItsABunny/oohttp/example
 
-go 1.26.0
+go 1.27.0
 
 replace github.com/BRUHItsABunny/oohttp => ../
 

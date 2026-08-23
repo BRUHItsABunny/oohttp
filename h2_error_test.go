@@ -9,6 +9,7 @@ package http
 import (
 	"errors"
 	"fmt"
+	"github.com/BRUHItsABunny/oohttp/internal/http2"
 	"testing"
 )
 
@@ -20,15 +21,17 @@ type externalStreamError struct {
 	Cause    error
 }
 
+var _ error = externalStreamError{}
+
 func (e externalStreamError) Error() string {
 	return fmt.Sprintf("ID %v, code %v", e.StreamID, e.Code)
 }
 
 func TestStreamError(t *testing.T) {
-	streamErr := http2streamError(42, http2ErrCodeProtocol)
-	var extStreamErr externalStreamError
-	if !errors.As(streamErr, &extStreamErr) {
-		t.Fatalf("errors.As failed")
+	streamErr := http2.StreamError{StreamID: 42, Code: http2.ErrCodeProtocol}
+	extStreamErr, ok := errors.AsType[externalStreamError](streamErr)
+	if !ok {
+		t.Fatalf("errors.AsType failed")
 	}
 	if extStreamErr.StreamID != streamErr.StreamID {
 		t.Errorf("got StreamID %v, expected %v", extStreamErr.StreamID, streamErr.StreamID)

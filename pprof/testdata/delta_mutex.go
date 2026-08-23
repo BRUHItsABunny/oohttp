@@ -17,7 +17,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"net/http/httptest"
+	"github.com/BRUHItsABunny/oohttp/httptest"
 	"net/http/pprof"
 	"runtime"
 )

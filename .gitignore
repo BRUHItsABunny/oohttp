@@ -1,1 +1,17 @@
+# Working copy of the upstream Go repository used by tools/compare.bash.
 /upstreamrepo
+
+# Editor / IDE state.
+.idea/
+.vscode/
+*.iml
+
+# Go build and test artifacts.
+*.exe
+*.test
+*.out
+
+# Scratch files from local test runs and agent tooling.
+/test-results*.txt
+/tests-*.txt
+/tmpclaude-*
