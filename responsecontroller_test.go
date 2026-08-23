@@ -49,7 +49,9 @@ func testResponseControllerFlush(t *testing.T, mode testMode) {
 	}
 }
 
-func TestResponseControllerHijack(t *testing.T) { run(t, testResponseControllerHijack) }
+func TestResponseControllerHijack(t *testing.T) {
+	run(t, testResponseControllerHijack, http3SkippedMode)
+}
 func testResponseControllerHijack(t *testing.T, mode testMode) {
 	const header = "X-Header"
 	const value = "set"
@@ -79,7 +81,7 @@ func testResponseControllerHijack(t *testing.T, mode testMode) {
 }
 
 func TestResponseControllerSetPastWriteDeadline(t *testing.T) {
-	run(t, testResponseControllerSetPastWriteDeadline)
+	run(t, testResponseControllerSetPastWriteDeadline, http3SkippedMode)
 }
 func testResponseControllerSetPastWriteDeadline(t *testing.T, mode testMode) {
 	cst := newClientServerTest(t, mode, HandlerFunc(func(w ResponseWriter, r *Request) {
@@ -121,7 +123,7 @@ func testResponseControllerSetPastWriteDeadline(t *testing.T, mode testMode) {
 }
 
 func TestResponseControllerSetFutureWriteDeadline(t *testing.T) {
-	run(t, testResponseControllerSetFutureWriteDeadline)
+	run(t, testResponseControllerSetFutureWriteDeadline, http3SkippedMode)
 }
 func testResponseControllerSetFutureWriteDeadline(t *testing.T, mode testMode) {
 	errc := make(chan error, 1)
@@ -157,7 +159,7 @@ func testResponseControllerSetFutureWriteDeadline(t *testing.T, mode testMode) {
 }
 
 func TestResponseControllerSetPastReadDeadline(t *testing.T) {
-	run(t, testResponseControllerSetPastReadDeadline)
+	run(t, testResponseControllerSetPastReadDeadline, http3SkippedMode)
 }
 func testResponseControllerSetPastReadDeadline(t *testing.T, mode testMode) {
 	readc := make(chan struct{})
@@ -221,7 +223,7 @@ func testResponseControllerSetPastReadDeadline(t *testing.T, mode testMode) {
 }
 
 func TestResponseControllerSetFutureReadDeadline(t *testing.T) {
-	run(t, testResponseControllerSetFutureReadDeadline)
+	run(t, testResponseControllerSetFutureReadDeadline, http3SkippedMode)
 }
 func testResponseControllerSetFutureReadDeadline(t *testing.T, mode testMode) {
 	respBody := "response body"
@@ -257,7 +259,9 @@ func (w wrapWriter) Unwrap() ResponseWriter {
 	return w.ResponseWriter
 }
 
-func TestWrappedResponseController(t *testing.T) { run(t, testWrappedResponseController) }
+func TestWrappedResponseController(t *testing.T) {
+	run(t, testWrappedResponseController, http3SkippedMode)
+}
 func testWrappedResponseController(t *testing.T, mode testMode) {
 	cst := newClientServerTest(t, mode, HandlerFunc(func(w ResponseWriter, r *Request) {
 		w = wrapWriter{w}
@@ -281,7 +285,7 @@ func testWrappedResponseController(t *testing.T, mode testMode) {
 }
 
 func TestResponseControllerEnableFullDuplex(t *testing.T) {
-	run(t, testResponseControllerEnableFullDuplex)
+	run(t, testResponseControllerEnableFullDuplex, http3SkippedMode)
 }
 func testResponseControllerEnableFullDuplex(t *testing.T, mode testMode) {
 	cst := newClientServerTest(t, mode, HandlerFunc(func(w ResponseWriter, req *Request) {

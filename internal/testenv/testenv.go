@@ -4,6 +4,7 @@ package testenv
 
 import (
 	"context"
+	"os"
 	"os/exec"
 	"testing"
 )
@@ -45,4 +46,24 @@ func Command(t testing.TB, name string, args ...string) *exec.Cmd {
 // MustHaveSource skips the test if Go source is not available.
 func MustHaveSource(t testing.TB) {
 	t.Skip("testenv.MustHaveSource is not enabled in this fork")
+}
+
+// Executable returns the path to the current test binary.
+func Executable(t testing.TB) string {
+	path, err := os.Executable()
+	if err != nil {
+		t.Skipf("testenv.Executable: %v", err)
+	}
+	return path
+}
+
+// CleanCmdEnv returns cmd with a reduced environment.
+func CleanCmdEnv(cmd *exec.Cmd) *exec.Cmd {
+	if cmd.Env != nil {
+		panic("environment already set")
+	}
+	for _, env := range os.Environ() {
+		cmd.Env = append(cmd.Env, env)
+	}
+	return cmd
 }
